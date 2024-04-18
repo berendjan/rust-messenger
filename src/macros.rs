@@ -5,7 +5,7 @@
 /// example:
 /// ``` ignore
 /// Messenger! {
-///     messenger::message_bus::MemoryBus,
+///     rust_messenger::message_bus::MemoryBus,
 ///     WorkerA:
 ///         handlers: [
 ///             handler_a: handlers::HandlerA,
@@ -28,21 +28,21 @@
 /// generates:
 ///
 /// ```ignore
-/// use ::messenger::messenger;
-/// use ::messenger::traits;
-/// use ::messenger::traits::DeserializeMessage;
-/// use ::messenger::traits::Handle;
-/// use ::messenger::traits::Handler;
-/// use ::messenger::traits::Message;
-/// use ::messenger::traits::Router;
+/// use ::rust_messenger::messenger;
+/// use ::rust_messenger::traits;
+/// use ::rust_messenger::traits::DeserializeMessage;
+/// use ::rust_messenger::traits::Handle;
+/// use ::rust_messenger::traits::Handler;
+/// use ::rust_messenger::traits::Message;
+/// use ::rust_messenger::traits::Router;
 ///
 /// pub struct Messenger<MB: traits::MessageBus> {
 ///     pub message_bus: MB,
 /// }
 ///
-/// impl messenger::Messenger<MemoryBus> {
-///     pub fn new() -> messenger::Messenger<MemoryBus> {
-///         messenger::Messenger {
+/// impl rust_messenger::Messenger<MemoryBus> {
+///     pub fn new() -> rust_messenger::Messenger<MemoryBus> {
+///         rust_messenger::Messenger {
 ///             message_bus: MemoryBus::new(),
 ///         }
 ///     }
@@ -117,7 +117,7 @@
 ///
 /// impl traits::Router for WorkerA {
 ///     #[inline]
-///     fn route<W: traits::Writer>(&mut self, header: &messenger::Header, buffer: &[u8], writer: &W) {
+///     fn route<W: traits::Writer>(&mut self, header: &rust_messenger::Header, buffer: &[u8], writer: &W) {
 ///         match (header.source.into(), header.message_id.into()) {
 ///             (handlers::HandlerB::ID, messages::MessageA::ID) => {
 ///                 let message = <$message>::deserialize_from(&buffer);
@@ -135,7 +135,7 @@
 ///
 /// impl traits::Router for WorkerB {
 ///     #[inline]
-///     fn route<W: traits::Writer>(&mut self, header: &messenger::Header, buffer: &[u8], writer: &W) {
+///     fn route<W: traits::Writer>(&mut self, header: &rust_messenger::Header, buffer: &[u8], writer: &W) {
 ///         match (header.source.into(), header.message_id.into()) {
 ///             (handlers::HandlerB::ID, messages::MessageA::ID) => {
 ///                 let message = <$message>::deserialize_from(&buffer);
@@ -150,7 +150,7 @@
 /// to run the Messenger you can do:
 /// ``` ignore
 /// pub fn main() {
-///     let mut messenger = Messenger::new();
+///     let mut messenger = rust_messenger::new();
 ///     messenger.run();
 /// }
 /// ```
@@ -165,13 +165,13 @@ macro_rules! Messenger {
         $(in_place)?
         $(from)?
     )+ ) => {
-        use ::messenger::messenger;
-        use ::messenger::traits;
-        use ::messenger::traits::DeserializeFrom;
-        use ::messenger::traits::Handle;
-        use ::messenger::traits::Handler;
-        use ::messenger::traits::Message;
-        use ::messenger::traits::Router;
+        use ::rust_messenger::messenger;
+        use ::rust_messenger::traits;
+        use ::rust_messenger::traits::DeserializeFrom;
+        use ::rust_messenger::traits::Handle;
+        use ::rust_messenger::traits::Handler;
+        use ::rust_messenger::traits::Message;
+        use ::rust_messenger::traits::Router;
 
         pub struct Messenger<MB: traits::MessageBus> {
             pub message_bus: MB,

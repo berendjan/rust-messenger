@@ -1,14 +1,24 @@
 # Messenger
 
-Library for 
+Library for creating software with a nano-services architecture. Each service (named `traits::Handler`) can receive and send messages but is unaware of any other service.
+The routing table is what links all the services together.
 
-## Quickstart
+## Usage example
+
+Please see `examples/serde_bincode`.
+
+To run:
+```bash
+cargo run --example serde_bincode
+```
+
+## Dev Quickstart
 
 ```bash
 rustup toolchain install nightly
 rustup override set nightly
 rustup +nightly component add miri
-cargo miri run --bin two_workers_example
+cargo miri run --example serde_bincode
 ```
 
 This library implements a nano-services model where *handlers* are tiny services.
@@ -31,10 +41,6 @@ Any implementation consists of 4 main parts, where the MessageBus can be changes
 
 The user is left to implement *handlers* services which implement the `Handler` and `Handle` traits and the *messages* that will be sent between *handlers*.
 
-## Gotchas
-
-The message id `65.535` or `1 << 16 - 1` is reserved. This is currently not checked at compile time.
-
 ## Features
 
 The library has 2 operating modes (as features):
@@ -50,9 +56,11 @@ Note that if you choose the persist the messages in a file-backed mmap, you shou
 
 ## Todo
 
-- [ ] Stop functionality
 - [ ] Linux Anonymous Mmap Wrapper
 - [ ] Linux Growable Mmap Wrapper
 - [ ] Macos Growable Mmap Wrapper
 - [ ] Persistent (File Backed) Message Bus
+- [ ] Stop functionality
 - [ ] Add Replay Functionality for Persistant (File Backed) Message Bus
+- [ ] `Messenger::run()` returns a `Vec<JoinHandler>` wrapper class that will join the handles in the drop implementation.
+

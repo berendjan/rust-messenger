@@ -1,8 +1,8 @@
 mod handlers;
 mod messages;
 
-use ::messenger::message_bus;
-use ::messenger::Messenger;
+use ::rust_messenger::message_bus;
+use ::rust_messenger::Messenger;
 
 Messenger! {
     message_bus::circular_bus::CircularBus<4096>,

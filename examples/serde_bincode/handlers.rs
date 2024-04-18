@@ -1,7 +1,7 @@
 use crate::messages;
 
-use messenger::traits;
-use messenger::traits::Sender;
+use rust_messenger::traits;
+use rust_messenger::traits::Sender;
 
 #[repr(u16)]
 #[derive(PartialEq, Eq)]
