@@ -13,7 +13,7 @@ pub trait Handle<M: Message> {
 }
 
 pub trait Message {
-    type Id: Into<u16>;
+    type Id: Into<u16> + From<Self::Id>;
     const ID: Self::Id;
 }
 
@@ -21,11 +21,29 @@ pub trait Reader {
     fn read(&self, position: usize) -> Option<(&messenger::Header, &[u8])>;
 }
 
-pub trait Writer {
+pub(crate) trait InnerWriter {
+    fn inner_write<F: FnMut(&mut [u8])>(&self, size: usize, callback: F);
+}
+
+pub trait Writer: InnerWriter {
     fn write<M: Message, H: Handler, F: FnMut(&mut [u8])>(&self, size: usize, callback: F);
 }
 
-pub trait MessageBus: Reader + Writer + Sync + Send {}
+pub trait Stoppable {
+    fn stop(&self);
+}
+impl<MB: MessageBus> Stoppable for MB {
+    fn stop(&self) {
+        self.inner_write(messenger::ALIGNED_HEADER_SIZE, |buffer| {
+            let header_ptr = buffer.as_mut_ptr() as *mut messenger::Header;
+            unsafe {
+                (*header_ptr).system_flags = messenger::Header::FLAG_STOP;
+            }
+        });
+    }
+}
+
+pub trait MessageBus: Reader + Writer + Sync + Send + InnerWriter {}
 
 pub trait Router {
     fn route<W: Writer>(&mut self, header: &messenger::Header, buffer: &[u8], writer: &W);

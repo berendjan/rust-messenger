@@ -47,7 +47,7 @@
 ///         }
 ///     }
 ///
-///     pub fn run(&mut self) {
+///     pub fn run(&self) {
 ///         let mut handles = Vec::<std::thread::JoinHandle<()>>::new();
 ///
 ///         let mb = self.message_bus.clone();
@@ -184,7 +184,7 @@ macro_rules! Messenger {
                 }
             }
 
-            pub fn run(&mut self) {
+            pub fn run(&self) {
                 let mut handles = Vec::<std::thread::JoinHandle<()>>::new();
 
                 $(

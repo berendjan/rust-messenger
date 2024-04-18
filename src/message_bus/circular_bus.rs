@@ -33,8 +33,6 @@ impl<const S: usize> CircularBus<S> {
     }
 }
 
-impl<const S: usize> traits::MessageBus for CircularBus<S> {}
-
 impl<const S: usize> traits::Writer for CircularBus<S> {
     fn write<M: traits::Message, H: traits::Handler, F: FnMut(&mut [u8])>(
         &self,
@@ -107,6 +105,67 @@ impl<const S: usize> traits::Reader for CircularBus<S> {
         Some((header, buffer))
     }
 }
+
+// impl<const S: usize> traits::InnerWriter for CircularBus<S> {
+//     #[inline]
+//     fn inner_write<F: FnMut(&mut [u8])>(&self, size: usize, mut callback: F) {
+//         let len = messenger::align_to_usize(size);
+
+//         let position = self
+//             .buffer
+//             .write_head
+//             .fetch_add(len, std::sync::atomic::Ordering::Relaxed);
+//         let wrapped_pos = position % Self::WRAP_SIZE;
+
+//         let ptr = self.buffer.mmap.get_ptr() as *mut u8;
+//         let ptr = unsafe { ptr.add(wrapped_pos) };
+
+//         unsafe {
+//             std::ptr::write_bytes(ptr, 0, len);
+//         }
+
+//         let buffer = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
+//         callback(buffer);
+
+//         let new_read_head = position + len;
+//         loop {
+//             match self.buffer.read_head.compare_exchange_weak(
+//                 position,
+//                 new_read_head,
+//                 std::sync::atomic::Ordering::Release,
+//                 std::sync::atomic::Ordering::Relaxed,
+//             ) {
+//                 Ok(_) => break,
+//                 _ => continue,
+//             }
+//         }
+//     }
+// }
+
+// impl<const S: usize> traits::Writer for CircularBus<S> {
+//     fn write<M: traits::Message, H: traits::Handler, F: FnMut(&mut [u8])>(
+//         &self,
+//         size: usize,
+//         mut callback: F,
+//     ) {
+//         let size = messenger::ALIGNED_HEADER_SIZE + size;
+
+//         self.inner_write(size, |buffer| {
+//             let header_ptr = buffer.as_mut_ptr() as *mut messenger::Header;
+//             unsafe {
+//                 (*header_ptr).source = H::ID.into();
+//                 (*header_ptr).message_id = M::ID.into();
+//                 (*header_ptr).size = size as u16;
+//             }
+
+//             let msg_ptr = unsafe { buffer.as_mut_ptr().add(messenger::ALIGNED_HEADER_SIZE) };
+//             let msg_buffer = unsafe { std::slice::from_raw_parts_mut(msg_ptr, size) };
+//             callback(msg_buffer);
+//         });
+//     }
+// }
+
+impl<const S: usize> traits::MessageBus for CircularBus<S> {}
 
 #[cfg(test)]
 mod tests {

@@ -1,5 +1,7 @@
 # Messenger
 
+Library for 
+
 ## Quickstart
 
 ```bash
@@ -29,6 +31,10 @@ Any implementation consists of 4 main parts, where the MessageBus can be changes
 
 The user is left to implement *handlers* services which implement the `Handler` and `Handle` traits and the *messages* that will be sent between *handlers*.
 
+## Gotchas
+
+The message id `65.535` or `1 << 16 - 1` is reserved. This is currently not checked at compile time.
+
 ## Features
 
 The library has 2 operating modes (as features):
@@ -44,6 +50,7 @@ Note that if you choose the persist the messages in a file-backed mmap, you shou
 
 ## Todo
 
+- [ ] Stop functionality
 - [ ] Linux Anonymous Mmap Wrapper
 - [ ] Linux Growable Mmap Wrapper
 - [ ] Macos Growable Mmap Wrapper
