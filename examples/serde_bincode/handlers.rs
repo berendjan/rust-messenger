@@ -40,6 +40,8 @@ impl traits::Handler for HandlerA {
     fn on_start<W: traits::Writer>(&mut self, writer: &mut W) {
         println!("HandlerA started");
         Self::send(&messages::MessageB { other_val: 0 }, writer);
+
+        // zero copy
         // Self::send::<messages::MessageB, _, _>(writer, |msg| msg.other_val = 0);
     }
 }
@@ -52,6 +54,8 @@ impl traits::Handle<messages::MessageA> for HandlerA {
             };
             println!("received messages::MessageA at HandlerA: {}", message.val);
             Self::send(&response, writer)
+
+            // zero copy
             // Self::send::<messages::MessageB, _, _>(writer, |msg| {
             //     msg.other_val = message.val as u16 + 1
             // });
@@ -80,6 +84,8 @@ impl traits::Handle<messages::MessageB> for HandlerB {
                 message.other_val
             );
             Self::send(&response, writer)
+
+            // zero copy
             // Self::send::<messages::MessageA, _, _>(writer, |msg| {
             //     msg.val = message.other_val as u8 + 1
             // });
@@ -95,8 +101,6 @@ impl traits::Handler for HandlerC {
     fn new() -> Self {
         HandlerC {}
     }
-
-    fn on_loop<W: traits::Writer>(&mut self, _writer: &mut W) {}
 }
 
 impl traits::Handle<messages::MessageA> for HandlerC {

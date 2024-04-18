@@ -4,10 +4,6 @@ pub struct Header {
     pub source: u16,
     pub message_id: u16,
 }
-
-impl Header {
-    pub(crate) const FLAG_STOP: u8 = 0b0000_0001;
-}
 pub const HEADER_SIZE: usize = std::mem::size_of::<Header>();
 pub const ALIGNED_HEADER_SIZE: usize = align_to_usize(HEADER_SIZE);
 

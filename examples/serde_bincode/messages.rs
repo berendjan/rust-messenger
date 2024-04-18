@@ -42,6 +42,7 @@ impl From<u16> for MessageId {
     }
 }
 
+// zero copy
 // impl traits::ZeroCopyMessage for MessageA {}
 // impl traits::ZeroCopyMessage for MessageB {}
 

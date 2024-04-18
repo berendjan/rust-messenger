@@ -25,6 +25,6 @@ Messenger! {
 }
 
 pub fn main() {
-    let mut messenger = Messenger::new();
+    let messenger = Messenger::new();
     messenger.run();
 }
