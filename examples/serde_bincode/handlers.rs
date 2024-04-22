@@ -3,28 +3,11 @@ use crate::messages;
 use rust_messenger::traits;
 use rust_messenger::traits::Sender;
 
-#[repr(u16)]
-#[derive(PartialEq, Eq)]
-pub enum HandlerId {
-    HandlerA,
-    HandlerB,
-    HandlerC,
-}
-
-impl From<HandlerId> for u16 {
-    fn from(value: HandlerId) -> Self {
-        value as u16
-    }
-}
-
-impl From<u16> for HandlerId {
-    fn from(value: u16) -> Self {
-        match value {
-            0 => HandlerId::HandlerA,
-            1 => HandlerId::HandlerB,
-            2 => HandlerId::HandlerC,
-            _ => panic!("Found unknown HandlerId {value}"),
-        }
+rust_messenger::messenger_id_enum! {
+    HandlerId {
+        HandlerA = 1,
+        HandlerB = 2,
+        HandlerC = 3,
     }
 }
 

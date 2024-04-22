@@ -4,6 +4,10 @@ use crate::traits;
 #[cfg(target_os = "macos")]
 use crate::mmap::macos::anonymous_mmap;
 
+/// A circular bus implementation that uses a shared memory buffer to store messages.
+/// The buffer is shared between the writer and the reader.
+/// This implementation returns immediately when there is no new message to read.
+/// The writer and the reader are lock-free.
 #[derive(Clone)]
 pub struct CircularBus<const S: usize> {
     buffer: std::sync::Arc<SharedBuffer>,

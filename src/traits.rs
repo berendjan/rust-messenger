@@ -13,7 +13,7 @@ pub trait Handle<M: Message> {
 }
 
 pub trait Message {
-    type Id: Into<u16> + From<Self::Id>;
+    type Id: Into<u16>;
     const ID: Self::Id;
 }
 

@@ -1,1 +1,1 @@
-pub mod circular_bus;
+pub mod atomic_circular_bus;

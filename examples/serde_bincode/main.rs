@@ -5,7 +5,7 @@ use ::rust_messenger::message_bus;
 use ::rust_messenger::Messenger;
 
 Messenger! {
-    message_bus::circular_bus::CircularBus<4096>,
+    message_bus::atomic_circular_bus::CircularBus<4096>,
     WorkerA:
         handlers: [
             handler_a: handlers::HandlerA,
