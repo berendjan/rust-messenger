@@ -1,8 +1,6 @@
 use crate::messenger;
 use crate::traits;
-
-#[cfg(target_os = "macos")]
-use crate::mmap::macos::anonymous_mmap;
+use crate::mmap::anonymous_mmap;
 
 /// A circular bus implementation that uses a shared memory buffer to store messages.
 /// The buffer is shared between the writer and the reader.
