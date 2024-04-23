@@ -1,6 +1,6 @@
+/// Match against the enum name and a list of variant bindings like (Variant = value)
 #[macro_export]
 macro_rules! messenger_id_enum {
-    // Match against the enum name and a list of variant bindings like (Variant = value)
     ($name:ident { $($variant:ident = $value:expr),+ $(,)? }) => {
         #[repr(u16)]
         #[derive(PartialEq, Eq, Debug)]
@@ -55,5 +55,25 @@ mod tests {
         assert_eq!(1, X);
         const U16: u16 = 1;
         assert_eq!(TestEnum::from_u16(U16), TestEnum::VariantA);
+    }
+
+    #[test]
+    fn test_cast_from_zero() {
+        messenger_id_enum!(
+            TestEnum {
+                VariantA = 1,
+                VariantB = 2,
+            }
+        );
+
+        let mut data: [u8; 2] = [0; 2];
+        let enm_ptr = data.as_mut_ptr() as *mut TestEnum;
+        unsafe {
+            let enm = &mut *enm_ptr;
+            assert_ne!(*enm, TestEnum::VariantA);
+            assert_ne!(*enm, TestEnum::VariantB);
+            *enm = TestEnum::VariantA;
+            assert_eq!(*enm, TestEnum::VariantA);
+        }
     }
 }
