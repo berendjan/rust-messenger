@@ -37,7 +37,7 @@
 /// use ::rust_messenger::traits::Router;
 ///
 /// pub struct Messenger<MB: traits::MessageBus> {
-///     pub message_bus: MB,
+///     message_bus: MB,
 /// }
 ///
 /// impl rust_messenger::Messenger<MemoryBus> {
@@ -47,17 +47,22 @@
 ///         }
 ///     }
 ///
-///     pub fn run(&self) {
+///     pub fn run(&self) -> messenger::JoinHandles {
 ///         let mut handles = Vec::<std::thread::JoinHandle<()>>::new();
 ///
 ///         let mb = self.message_bus.clone();
-///         handles.push(std::thread::spawn(|| WorkerA::run_task(mb)));
+///         let st = self.stop.clone();
+///         handles.push(std::thread::spawn(|| WorkerA::run_task(mb, st)));
 ///         let mb = self.message_bus.clone();
-///         handles.push(std::thread::spawn(|| WorkerB::run_task(mb)));
+///         let st = self.stop.clone();
+///         handles.push(std::thread::spawn(|| WorkerB::run_task(mb, st)));
 ///
-///         for handle in handles {
-///             handle.join().unwrap();
-///         }
+///         messenger::JoinHandlers::new(handles)
+///     }
+///
+///     pub fn stop(&self) {
+///         self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+///         println!("Stopping Messenger, Goodbye!");
 ///     }
 /// }
 ///
@@ -65,18 +70,21 @@
 ///     position: usize,
 ///     handler_a: handlers::HandlerA,
 ///     handler_b: handlers::HandlerB,
+///     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
 /// }
 /// struct WorkerB {
 ///     position: usize,
 ///     handler_c: handlers::HandlerC,
+///     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
 /// }
 ///
 /// impl WorkerA {
-///     fn run_task<MB: traits::MessageBus>(mut message_bus: MB) {
+///     fn run_task<MB: traits::MessageBus>(mut message_bus: MB, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
 ///         let mut worker = WorkerA {
 ///             position: 0,
 ///             handler_a: handlers::HandlerA::new(),
 ///             handler_b: handlers::HandlerB::new(),
+///             stop,
 ///         };
 ///         worker.run(&mut message_bus)
 ///     }
@@ -89,17 +97,23 @@
 ///                 self.position += messenger::ALIGNED_HEADER_SIZE + buffer.len();
 ///                 self.route(&header, &buffer, message_bus);
 ///             }
+///
 ///             self.handler_a.on_loop(message_bus);
 ///             self.handler_b.on_loop(message_bus);
+///
+///             if self.stop.load(std::sync::atomic::Ordering::Relaxed) {
+///                 break;
+///             }
 ///         }
 ///     }
 /// }
 ///
 /// impl WorkerB {
-///     pub fn run_task<MB: traits::MessageBus>(mut message_bus: MB) {
+///     pub fn run_task<MB: traits::MessageBus>(mut message_bus: MB, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
 ///         let mut worker = WorkerB {
 ///             position: 0,
 ///             handler_c: handlers::HandlerC::new(),
+///             stop,
 ///         };
 ///         worker.run(&mut message_bus)
 ///     }
@@ -110,7 +124,12 @@
 ///                 self.position += messenger::ALIGNED_HEADER_SIZE + buffer.len();
 ///                 self.route(&header, &buffer, message_bus);
 ///             }
+///
 ///             self.handler_c.on_loop(message_bus);
+///
+///             if self.stop.load(std::sync::atomic::Ordering::Relaxed) {
+///                 break;
+///             }
 ///         }
 ///     }
 /// }
@@ -174,27 +193,33 @@ macro_rules! Messenger {
         use ::rust_messenger::traits::Router;
 
         pub struct Messenger<MB: traits::MessageBus> {
-            pub message_bus: MB,
+            message_bus: MB,
+            stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
         }
 
         impl Messenger<$message_bus> {
             pub fn new() -> Messenger<$message_bus> {
                 Messenger {
                     message_bus: <$message_bus>::new(),
+                    stop: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 }
             }
 
-            pub fn run(&self) {
+            pub fn run(&self) -> messenger::JoinHandles {
                 let mut handles = Vec::<std::thread::JoinHandle<()>>::new();
 
                 $(
                     let mb = self.message_bus.clone();
-                    handles.push(std::thread::spawn(|| $worker::run_task(mb)));
+                    let st = self.stop.clone();
+                    handles.push(std::thread::spawn(|| $worker::run_task(mb, st)));
                 )+
 
-                for handle in handles {
-                    handle.join().unwrap();
-                }
+                messenger::JoinHandles::new(handles)
+            }
+
+            pub fn stop(&self) {
+                self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+                println!("Stopping Messenger, Goodbye!");
             }
         }
 
@@ -202,13 +227,15 @@ macro_rules! Messenger {
             struct $worker {
                 position: usize,
                 $($handler_ident: $handler_ty,)+
+                stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
             }
 
             impl $worker {
-                fn run_task<MB: traits::MessageBus>(mut message_bus: MB) {
+                fn run_task<MB: traits::MessageBus>(mut message_bus: MB, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
                     let mut worker = $worker {
                         position: 0,
                         $($handler_ident: <$handler_ty>::new(),)+
+                        stop,
                     };
                     worker.run(&mut message_bus)
                 }
@@ -222,9 +249,14 @@ macro_rules! Messenger {
                             self.position += messenger::ALIGNED_HEADER_SIZE + buffer.len();
                             self.route(&header, &buffer, message_bus);
                         }
+
                         $(
                             self.$handler_ident.on_loop(message_bus);
                         )+
+
+                        if self.stop.load(std::sync::atomic::Ordering::Relaxed) {
+                            break;
+                        }
                     }
                 }
             }

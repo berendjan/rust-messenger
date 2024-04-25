@@ -26,5 +26,9 @@ Messenger! {
 
 pub fn main() {
     let messenger = Messenger::new();
-    messenger.run();
+    let handles = messenger.run();
+
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    messenger.stop();
+    handles.join();
 }

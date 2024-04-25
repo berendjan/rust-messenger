@@ -13,6 +13,22 @@ pub const fn align_to_usize(from: usize) -> usize {
     ((from + (1 << BITS) - 1) >> BITS) << BITS
 }
 
+pub struct JoinHandles {
+    handles: Vec<std::thread::JoinHandle<()>>,
+}
+
+impl JoinHandles {
+    pub fn new(handles: Vec<std::thread::JoinHandle<()>>) -> JoinHandles {
+        JoinHandles { handles }
+    }
+
+    pub fn join(self) {
+        for handle in self.handles {
+            handle.join().unwrap();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
