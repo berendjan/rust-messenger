@@ -1,41 +1,45 @@
 use crate::messenger;
-use crate::traits;
 use crate::mmap::anonymous_mmap;
+use crate::traits;
 
 /// A circular bus implementation that uses a shared memory buffer to store messages.
 /// The buffer is shared between the writer and the reader.
 /// This implementation returns immediately when there is no new message to read.
 /// The writer and the reader are lock-free.
 #[derive(Clone)]
-pub struct CircularBus<const S: usize> {
+pub struct CircularBus {
     buffer: std::sync::Arc<SharedBuffer>,
+}
+
+pub trait Config {
+    const BUFFER_SIZE: usize;
 }
 
 struct SharedBuffer {
     mmap: anonymous_mmap::AnonymousMmap,
     write_head: std::sync::atomic::AtomicUsize,
     read_head: std::sync::atomic::AtomicUsize,
+    wrap_size: usize,
 }
 
-impl<const S: usize> CircularBus<S> {
-    const BUFFER_SIZE: usize = S;
-    const WRAP_SIZE: usize = S >> 1;
-
-    pub fn new() -> CircularBus<S> {
-        let mmap = anonymous_mmap::AnonymousMmap::new(Self::BUFFER_SIZE).unwrap();
+impl CircularBus {
+    pub fn new<C: Config>(_: &C) -> CircularBus {
+        let mmap = anonymous_mmap::AnonymousMmap::new(C::BUFFER_SIZE).unwrap();
         let write_head = std::sync::atomic::AtomicUsize::new(0);
         let read_head = std::sync::atomic::AtomicUsize::new(0);
+        let wrap_size = C::BUFFER_SIZE >> 1;
         Self {
             buffer: std::sync::Arc::new(SharedBuffer {
                 mmap,
                 write_head,
                 read_head,
+                wrap_size,
             }),
         }
     }
 }
 
-impl<const S: usize> traits::Writer for CircularBus<S> {
+impl traits::Writer for CircularBus {
     fn write<M: traits::Message, H: traits::Handler, F: FnMut(&mut [u8])>(
         &self,
         size: usize,
@@ -48,7 +52,7 @@ impl<const S: usize> traits::Writer for CircularBus<S> {
             .buffer
             .write_head
             .fetch_add(len, std::sync::atomic::Ordering::Relaxed);
-        let wrapped_pos = position % Self::WRAP_SIZE;
+        let wrapped_pos = position % self.buffer.wrap_size;
 
         let ptr = self.buffer.mmap.get_ptr() as *mut u8;
         let ptr = unsafe { ptr.add(wrapped_pos) };
@@ -83,7 +87,7 @@ impl<const S: usize> traits::Writer for CircularBus<S> {
     }
 }
 
-impl<const S: usize> traits::Reader for CircularBus<S> {
+impl traits::Reader for CircularBus {
     fn read(&self, position: usize) -> Option<(&messenger::Header, &[u8])> {
         let read_head_position = self
             .buffer
@@ -93,7 +97,7 @@ impl<const S: usize> traits::Reader for CircularBus<S> {
         if position >= read_head_position {
             return None;
         }
-        let wrapped_position = position % Self::WRAP_SIZE;
+        let wrapped_position = position % self.buffer.wrap_size;
 
         let ptr = self.buffer.mmap.get_ptr() as *const u8;
         let ptr = unsafe { ptr.add(wrapped_position) };
@@ -108,7 +112,7 @@ impl<const S: usize> traits::Reader for CircularBus<S> {
     }
 }
 
-impl<const S: usize> traits::MessageBus for CircularBus<S> {}
+impl traits::MessageBus for CircularBus {}
 
 #[cfg(test)]
 mod tests {
@@ -145,10 +149,17 @@ mod tests {
 
     struct HandlerA {}
 
+    struct Config {}
+
+    impl super::Config for Config {
+        const BUFFER_SIZE: usize = 4096;
+    }
+
     impl traits::Handler for HandlerA {
         type Id = u16;
         const ID: u16 = 1;
-        fn new() -> Self {
+        type Config = Config;
+        fn new(_config: &Config) -> Self {
             Self {}
         }
     }
@@ -161,8 +172,8 @@ mod tests {
         use crate::traits::Reader;
         use crate::traits::Sender;
 
-        const BUFFER_SIZE: usize = 4096;
-        let bus = CircularBus::<BUFFER_SIZE>::new();
+        let config = Config {};
+        let bus = CircularBus::new(&config);
         let mut position: usize = 0;
         for i in 0..500 {
             let message = MsgA {

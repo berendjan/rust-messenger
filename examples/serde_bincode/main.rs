@@ -1,11 +1,10 @@
+mod config;
 mod handlers;
 mod messages;
 
-use ::rust_messenger::message_bus;
-use ::rust_messenger::Messenger;
-
-Messenger! {
-    message_bus::atomic_circular_bus::CircularBus<4096>,
+rust_messenger::Messenger! {
+    config::Config,
+    rust_messenger::message_bus::atomic_circular_bus::CircularBus,
     WorkerA:
         handlers: [
             handler_a: handlers::HandlerA,
@@ -25,9 +24,13 @@ Messenger! {
 }
 
 pub fn main() {
-    let messenger = Messenger::new();
+    let config = config::Config {
+        value: "Hello from Config".to_string(),
+    };
+    let messenger = Messenger::new(config);
     let handles = messenger.run();
 
+    println!("Messenger started, sleeping for 1 second");
     std::thread::sleep(std::time::Duration::from_secs(1));
     messenger.stop();
     handles.join();

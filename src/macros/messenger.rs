@@ -5,6 +5,7 @@
 /// example:
 /// ``` ignore
 /// Messenger! {
+///     config::Config,
 ///     rust_messenger::message_bus::MemoryBus,
 ///     WorkerA:
 ///         handlers: [
@@ -28,22 +29,26 @@
 /// generates:
 ///
 /// ```ignore
-/// use ::rust_messenger::messenger;
-/// use ::rust_messenger::traits;
-/// use ::rust_messenger::traits::DeserializeMessage;
-/// use ::rust_messenger::traits::Handle;
-/// use ::rust_messenger::traits::Handler;
-/// use ::rust_messenger::traits::Message;
-/// use ::rust_messenger::traits::Router;
+/// use rust_messenger::messenger;
+/// use rust_messenger::traits;
+/// use rust_messenger::traits::DeserializeMessage;
+/// use rust_messenger::traits::Handle;
+/// use rust_messenger::traits::Handler;
+/// use rust_messenger::traits::Message;
+/// use rust_messenger::traits::Router;
 ///
 /// pub struct Messenger<MB: traits::MessageBus> {
 ///     message_bus: MB,
+///     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+///     config: config::Config,
 /// }
 ///
 /// impl rust_messenger::Messenger<MemoryBus> {
-///     pub fn new() -> rust_messenger::Messenger<MemoryBus> {
+///     pub fn new(config: config::Config) -> rust_messenger::Messenger<MemoryBus> {
 ///         rust_messenger::Messenger {
 ///             message_bus: MemoryBus::new(),
+///             stop: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+///             config,
 ///         }
 ///     }
 ///
@@ -51,11 +56,13 @@
 ///         let mut handles = Vec::<std::thread::JoinHandle<()>>::new();
 ///
 ///         let mb = self.message_bus.clone();
+///         let cf = self.config.clone();
 ///         let st = self.stop.clone();
-///         handles.push(std::thread::spawn(|| WorkerA::run_task(mb, st)));
+///         handles.push(std::thread::spawn(|| WorkerA::run_task(mb, cf, st)));
 ///         let mb = self.message_bus.clone();
+///         let cf = self.config.clone();
 ///         let st = self.stop.clone();
-///         handles.push(std::thread::spawn(|| WorkerB::run_task(mb, st)));
+///         handles.push(std::thread::spawn(|| WorkerB::run_task(mb, cf, st)));
 ///
 ///         messenger::JoinHandlers::new(handles)
 ///     }
@@ -79,11 +86,11 @@
 /// }
 ///
 /// impl WorkerA {
-///     fn run_task<MB: traits::MessageBus>(mut message_bus: MB, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+///     fn run_task<MB: traits::MessageBus>(mut message_bus: MB, config: config::Config, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
 ///         let mut worker = WorkerA {
 ///             position: 0,
-///             handler_a: handlers::HandlerA::new(),
-///             handler_b: handlers::HandlerB::new(),
+///             handler_a: handlers::HandlerA::new(&config),
+///             handler_b: handlers::HandlerB::new(&config),
 ///             stop,
 ///         };
 ///         worker.run(&mut message_bus)
@@ -177,6 +184,7 @@
 #[macro_export]
 macro_rules! Messenger {
     (
+        $config:ty,
         $message_bus:ty,
         $( $worker:ident:
         handlers: [ $( $handler_ident:ident: $handler_ty:ty $(,)? ),+ ]
@@ -184,24 +192,26 @@ macro_rules! Messenger {
         $(in_place)?
         $(from)?
     )+ ) => {
-        use ::rust_messenger::messenger;
-        use ::rust_messenger::traits;
-        use ::rust_messenger::traits::DeserializeFrom;
-        use ::rust_messenger::traits::Handle;
-        use ::rust_messenger::traits::Handler;
-        use ::rust_messenger::traits::Message;
-        use ::rust_messenger::traits::Router;
+        use rust_messenger::messenger;
+        use rust_messenger::traits;
+        use rust_messenger::traits::DeserializeFrom;
+        use rust_messenger::traits::Handle;
+        use rust_messenger::traits::Handler;
+        use rust_messenger::traits::Message;
+        use rust_messenger::traits::Router;
 
         pub struct Messenger<MB: traits::MessageBus> {
             message_bus: MB,
             stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+            config: $config,
         }
 
         impl Messenger<$message_bus> {
-            pub fn new() -> Messenger<$message_bus> {
+            pub fn new(config: $config) -> Messenger<$message_bus> {
                 Messenger {
-                    message_bus: <$message_bus>::new(),
+                    message_bus: <$message_bus>::new(&config),
                     stop: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    config,
                 }
             }
 
@@ -210,8 +220,9 @@ macro_rules! Messenger {
 
                 $(
                     let mb = self.message_bus.clone();
+                    let cf = self.config.clone();
                     let st = self.stop.clone();
-                    handles.push(std::thread::spawn(|| $worker::run_task(mb, st)));
+                    handles.push(std::thread::spawn(|| $worker::run_task(mb, cf, st)));
                 )+
 
                 messenger::JoinHandles::new(handles)
@@ -231,10 +242,10 @@ macro_rules! Messenger {
             }
 
             impl $worker {
-                fn run_task<MB: traits::MessageBus>(mut message_bus: MB, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+                fn run_task<MB: traits::MessageBus>(mut message_bus: MB, config: $config, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
                     let mut worker = $worker {
                         position: 0,
-                        $($handler_ident: <$handler_ty>::new(),)+
+                        $($handler_ident: <$handler_ty>::new(&config),)+
                         stop,
                     };
                     worker.run(&mut message_bus)

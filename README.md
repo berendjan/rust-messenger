@@ -126,13 +126,14 @@ Note that if you choose the persist the messages in a file-backed mmap, you shou
 
 ## Todo
 
-- [x] Linux Anonymous Mmap Wrapper
 - [ ] Linux Growable Mmap Wrapper
 - [ ] Macos Growable Mmap Wrapper
 - [ ] Persistent (File Backed) Message Bus
 - [ ] Condvar Message Bus, that blocks if there are no new messages to be read, write should notify_all
-- [x] Stop functionality
 - [ ] Add Replay Functionality for Persistant (File Backed) Message Bus
+- [x] Linux Anonymous Mmap Wrapper
+- [x] Stop functionality
+- [x] Added user configuration input
 - [x] `Messenger::run()` returns a `Vec<JoinHandler>` wrapper class that will join the handles in the drop implementation.
 
 

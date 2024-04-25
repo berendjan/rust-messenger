@@ -1,3 +1,4 @@
+use crate::config;
 use crate::messages;
 
 use rust_messenger::traits;
@@ -16,12 +17,14 @@ pub struct HandlerA {}
 impl traits::Handler for HandlerA {
     type Id = HandlerId;
     const ID: HandlerId = HandlerId::HandlerA;
-    fn new() -> Self {
+    type Config = config::Config;
+    fn new(config: &Self::Config) -> Self {
+        println!("HandlerA new called with config value \"{}\"", config.value);
         HandlerA {}
     }
 
     fn on_start<W: traits::Writer>(&mut self, writer: &mut W) {
-        println!("HandlerA started");
+        println!("HandlerA on_start called");
         Self::send(&messages::MessageB { other_val: 0 }, writer);
 
         // zero copy
@@ -51,7 +54,8 @@ pub struct HandlerB {}
 impl traits::Handler for HandlerB {
     type Id = HandlerId;
     const ID: HandlerId = HandlerId::HandlerB;
-    fn new() -> Self {
+    type Config = config::Config;
+    fn new(_: &Self::Config) -> Self {
         HandlerB {}
     }
 }
@@ -81,7 +85,8 @@ pub struct HandlerC {}
 impl traits::Handler for HandlerC {
     type Id = HandlerId;
     const ID: HandlerId = HandlerId::HandlerC;
-    fn new() -> Self {
+    type Config = config::Config;
+    fn new(_: &Self::Config) -> Self {
         HandlerC {}
     }
 }
