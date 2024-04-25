@@ -109,6 +109,8 @@
 ///             self.handler_b.on_loop(message_bus);
 ///
 ///             if self.stop.load(std::sync::atomic::Ordering::Relaxed) {
+///                 self.handler_a.on_stop();
+///                 self.handler_b.on_stop();
 ///                 break;
 ///             }
 ///         }
@@ -135,6 +137,7 @@
 ///             self.handler_c.on_loop(message_bus);
 ///
 ///             if self.stop.load(std::sync::atomic::Ordering::Relaxed) {
+///                 self.handler_c.on_stop();
 ///                 break;
 ///             }
 ///         }
@@ -266,6 +269,9 @@ macro_rules! Messenger {
                         )+
 
                         if self.stop.load(std::sync::atomic::Ordering::Relaxed) {
+                            $(
+                                self.$handler_ident.on_stop();
+                            )+
                             break;
                         }
                     }

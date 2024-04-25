@@ -7,6 +7,7 @@ pub trait Handler {
     fn new(config: &Self::Config) -> Self;
     fn on_start<W: Writer>(&mut self, _writer: &mut W) {}
     fn on_loop<W: Writer>(&mut self, _writer: &mut W) {}
+    fn on_stop(&mut self) {}
 }
 
 pub trait Handle<M: Message> {
