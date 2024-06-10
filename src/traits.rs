@@ -71,7 +71,7 @@ pub trait Sender {
     fn send<M: ExtendedMessage, W: Writer>(message: &M, writer: &W);
 
     #[cfg(feature = "zero_copy")]
-    fn send<M: ZeroCopyMessage, W: Writer, F: FnMut(&mut M)>(writer: &W, callback: F);
+    fn send<M: ZeroCopyMessage, W: Writer, F: FnMut(*mut M)>(writer: &W, callback: F);
 }
 
 impl<H: Handler> Sender for H {
@@ -87,12 +87,11 @@ impl<H: Handler> Sender for H {
 
     #[cfg(feature = "zero_copy")]
     #[inline]
-    fn send<M: ZeroCopyMessage, W: Writer, F: FnMut(&mut M)>(writer: &W, mut callback: F) {
+    fn send<M: ZeroCopyMessage, W: Writer, F: FnMut(*mut M)>(writer: &W, mut callback: F) {
         let size: usize = std::mem::size_of::<M>();
         writer.write::<M, Self, _>(size, |buffer| {
             let ptr = buffer.as_mut_ptr() as *mut M;
-            let message = unsafe { &mut *ptr };
-            callback(message);
+            callback(ptr);
         });
     }
 }

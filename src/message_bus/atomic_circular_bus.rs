@@ -204,12 +204,12 @@ mod tests {
         use crate::traits::Reader;
         use crate::traits::Sender;
 
-        const BUFFER_SIZE: usize = 4096;
-        let bus = CircularBus::<BUFFER_SIZE>::new();
+        let config = Config {};
+        let bus = CircularBus::new(&config);
         let mut position: usize = 0;
         for i in 0..500 {
             HandlerA::send::<MsgA, _, _>(&bus, |msg| {
-                msg.data = [i, 1, 2, 3, 4];
+                unsafe { (*msg).data = [i, 1, 2, 3, 4] };
             });
 
             let (hdr, buffer) = bus.read(position).unwrap();

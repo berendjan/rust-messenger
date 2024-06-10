@@ -69,11 +69,10 @@ mod tests {
         let mut data: [u8; 2] = [0; 2];
         let enm_ptr = data.as_mut_ptr() as *mut TestEnum;
         unsafe {
-            let enm = &mut *enm_ptr;
-            assert_ne!(*enm, TestEnum::VariantA);
-            assert_ne!(*enm, TestEnum::VariantB);
-            *enm = TestEnum::VariantA;
-            assert_eq!(*enm, TestEnum::VariantA);
+            // let enm = &mut *enm_ptr; // casting to wrong enum value is UB
+            *enm_ptr = TestEnum::VariantA;
+            assert_eq!(*enm_ptr, TestEnum::VariantA);
+            assert_ne!(*enm_ptr, TestEnum::VariantB);
         }
     }
 }

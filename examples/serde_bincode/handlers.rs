@@ -25,26 +25,32 @@ impl traits::Handler for HandlerA {
 
     fn on_start<W: traits::Writer>(&mut self, writer: &mut W) {
         println!("HandlerA on_start called");
+
+        #[cfg(not(feature = "zero_copy"))]
         Self::send(&messages::MessageB { other_val: 0 }, writer);
 
-        // zero copy
-        // Self::send::<messages::MessageB, _, _>(writer, |msg| msg.other_val = 0);
+        #[cfg(feature = "zero_copy")]
+        Self::send::<messages::MessageB, _, _>(writer, |msg| unsafe { (*msg).other_val = 0 });
     }
 }
 
 impl traits::Handle<messages::MessageA> for HandlerA {
     fn handle<W: traits::Writer>(&mut self, message: &messages::MessageA, writer: &W) {
         if message.val < 10 {
-            let response = messages::MessageB {
-                other_val: message.val as u16 + 1,
-            };
             println!("received messages::MessageA at HandlerA: {}", message.val);
-            Self::send(&response, writer)
 
-            // zero copy
-            // Self::send::<messages::MessageB, _, _>(writer, |msg| {
-            //     msg.other_val = message.val as u16 + 1
-            // });
+            #[cfg(not(feature = "zero_copy"))]
+            {
+                let response = messages::MessageB {
+                    other_val: message.val as u16 + 1,
+                };
+                Self::send(&response, writer);
+            }
+
+            #[cfg(feature = "zero_copy")]
+            Self::send::<messages::MessageB, _, _>(writer, |msg| unsafe {
+                (*msg).other_val = message.val as u16 + 1
+            });
         }
     }
 }
@@ -63,19 +69,23 @@ impl traits::Handler for HandlerB {
 impl traits::Handle<messages::MessageB> for HandlerB {
     fn handle<W: traits::Writer>(&mut self, message: &messages::MessageB, writer: &W) {
         if message.other_val < 10 {
-            let response = messages::MessageA {
-                val: message.other_val as u8 + 1,
-            };
             println!(
                 "received messages::MessageB at HandlerB: {}",
                 message.other_val
             );
-            Self::send(&response, writer)
 
-            // zero copy
-            // Self::send::<messages::MessageA, _, _>(writer, |msg| {
-            //     msg.val = message.other_val as u8 + 1
-            // });
+            #[cfg(not(feature = "zero_copy"))]
+            {
+                let response = messages::MessageA {
+                    val: message.other_val as u8 + 1,
+                };
+                Self::send(&response, writer);
+            }
+
+            #[cfg(feature = "zero_copy")]
+            Self::send::<messages::MessageA, _, _>(writer, |msg| unsafe {
+                (*msg).val = message.other_val as u8 + 1
+            });
         }
     }
 }

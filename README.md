@@ -8,20 +8,32 @@ The routing table is what links all the services together.
 Please see `examples/serde_bincode`.
 
 To run:
+
 ```bash
 cargo run --example serde_bincode
+
+# run with zero_copy feature
+cargo run --features zero_copy --example serde_bincode
 ```
 
 ## Dev Quickstart
 
 ```bash
 rustup toolchain install nightly
-rustup override set nightly
 rustup +nightly component add miri
+rustup override set nightly
+
+# test with and without zero_copy enabled
+cargo miri test
+cargo miri test --features zero_copy
+
 cargo miri run --example serde_bincode
+
+# run with zero_copy feature
+cargo miri run --features zero_copy --example serde_bincode
 ```
 
-This library implements a nano-services model where *handlers* are tiny services.
+This library implements a nano-services model where _handlers_ are tiny services.
 
 ## Overview
 
@@ -39,18 +51,21 @@ The source code consists of 5 main parts, where the MessageBus can be changes de
 4. `message_bus/` contains possible implementations of the message bus required for concurrently sending/receiving data, uses mmap wrappers.
 5. `mmap/` contains mmap wrappers for the message bus implementations.
 
-The user is left to implement *handlers* services which implement the `Handler` and `Handle` traits and the *messages* that will be sent between *handlers*.
+The user is left to implement _handlers_ services which implement the `Handler` and `Handle` traits and the _messages_ that will be sent between _handlers_.
 
 ## Features
 
 The library has 2 operating modes (as features):
+
 1. default
 2. zero_copy
 
 ### default mode
+
 This is used for serializing with other libraries such as `Prost` or `Serde`. It is recommended to implement `traits::ExtendedMessage` for each message.
 
 Example trait `serde` implementation macro from `examples/serde_bincode`:
+
 ```rust
 macro_rules! impl_message_traits {
     ($type:ty, $id:expr) => {
@@ -82,6 +97,7 @@ impl_message_traits!(MessageB, MessageId::MessageB);
 ```
 
 example prost trait implementation macro
+
 ```rust
 rust_messenger::messenger_id_enum!(
     MessageId {
@@ -121,6 +137,7 @@ impl_message_traits!(account::GetAccountResponse, MessageId::GetAccountResponse)
 ```
 
 ### zero_copy mode
+
 This can be used when all messages are reinterpretable from a slice of bytes (by casting `*mut u8` to `&Message`) and each message type needs to implement `traits::ZeroCopyMessage`.
 Note that if you choose the persist the messages in a file-backed mmap, you should ensure that each type is `#[repr(C)]` for deterministic memory layout.
 
@@ -135,5 +152,3 @@ Note that if you choose the persist the messages in a file-backed mmap, you shou
 - [x] Stop functionality
 - [x] Added user configuration input
 - [x] `Messenger::run()` returns a `Vec<JoinHandler>` wrapper class that will join the handles in the drop implementation.
-
-

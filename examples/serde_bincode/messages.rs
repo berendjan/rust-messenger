@@ -17,10 +17,6 @@ rust_messenger::messenger_id_enum!(
     }
 );
 
-// zero copy
-// impl traits::ZeroCopyMessage for MessageA {}
-// impl traits::ZeroCopyMessage for MessageB {}
-
 macro_rules! impl_message_traits {
     ($type:ty, $id:expr) => {
         impl traits::Message for $type {
@@ -29,11 +25,16 @@ macro_rules! impl_message_traits {
         }
 
         impl traits::DeserializeFrom for $type {
+            #[cfg(not(feature = "zero_copy"))]
             fn deserialize_from(buffer: &[u8]) -> Self {
                 bincode::deserialize(buffer).unwrap()
             }
         }
 
+        #[cfg(feature = "zero_copy")]
+        impl traits::ZeroCopyMessage for $type {}
+
+        #[cfg(not(feature = "zero_copy"))]
         impl traits::ExtendedMessage for $type {
             fn get_size(&self) -> usize {
                 bincode::serialized_size(self).unwrap() as usize
