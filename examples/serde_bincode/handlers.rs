@@ -30,7 +30,9 @@ impl traits::Handler for HandlerA {
         Self::send(&messages::MessageB { other_val: 0 }, writer);
 
         #[cfg(feature = "zero_copy")]
-        Self::send::<messages::MessageB, _, _>(writer, |msg| unsafe { (*msg).other_val = 0 });
+        Self::send::<messages::MessageB, _, _>(writer, |msg| unsafe {
+            std::ptr::addr_of_mut!((*msg).other_val).write(0)
+        });
     }
 }
 
@@ -49,7 +51,7 @@ impl traits::Handle<messages::MessageA> for HandlerA {
 
             #[cfg(feature = "zero_copy")]
             Self::send::<messages::MessageB, _, _>(writer, |msg| unsafe {
-                (*msg).other_val = message.val as u16 + 1
+                std::ptr::addr_of_mut!((*msg).other_val).write(message.val as u16 + 1)
             });
         }
     }
@@ -84,7 +86,7 @@ impl traits::Handle<messages::MessageB> for HandlerB {
 
             #[cfg(feature = "zero_copy")]
             Self::send::<messages::MessageA, _, _>(writer, |msg| unsafe {
-                (*msg).val = message.other_val as u8 + 1
+                std::ptr::addr_of_mut!((*msg).val).write(message.other_val as u8 + 1)
             });
         }
     }

@@ -17,6 +17,8 @@ pub trait Handle<M: Message> {
 pub trait Message {
     type Id: Into<u16>;
     const ID: Self::Id;
+    #[cfg(feature = "zero_copy")]
+    const SIZE: usize = std::mem::size_of::<Self>();
 }
 
 pub trait Reader {
@@ -88,8 +90,7 @@ impl<H: Handler> Sender for H {
     #[cfg(feature = "zero_copy")]
     #[inline]
     fn send<M: ZeroCopyMessage, W: Writer, F: FnMut(*mut M)>(writer: &W, mut callback: F) {
-        let size: usize = std::mem::size_of::<M>();
-        writer.write::<M, Self, _>(size, |buffer| {
+        writer.write::<M, Self, _>(M::SIZE, |buffer| {
             let ptr = buffer.as_mut_ptr() as *mut M;
             callback(ptr);
         });

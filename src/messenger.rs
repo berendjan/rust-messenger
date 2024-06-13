@@ -1,8 +1,8 @@
 #[repr(C)]
 pub struct Header {
-    pub size: u16,
     pub source: u16,
     pub message_id: u16,
+    pub size: u16,
 }
 pub const HEADER_SIZE: usize = std::mem::size_of::<Header>();
 pub const ALIGNED_HEADER_SIZE: usize = align_to_usize(HEADER_SIZE);

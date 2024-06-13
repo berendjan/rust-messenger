@@ -61,11 +61,11 @@ impl traits::Writer for CircularBus {
             std::ptr::write_bytes(ptr, 0, len);
         }
 
-        let header_ptr = ptr as *mut messenger::Header;
+        let hdr_ptr = ptr as *mut messenger::Header;
         unsafe {
-            (*header_ptr).source = H::ID.into();
-            (*header_ptr).message_id = M::ID.into();
-            (*header_ptr).size = aligned_size as u16;
+            std::ptr::addr_of_mut!((*hdr_ptr).source).write(H::ID.into());
+            std::ptr::addr_of_mut!((*hdr_ptr).message_id).write(M::ID.into());
+            std::ptr::addr_of_mut!((*hdr_ptr).size).write(aligned_size as u16);
         }
 
         let msg_ptr = unsafe { ptr.add(messenger::ALIGNED_HEADER_SIZE) };

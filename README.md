@@ -139,7 +139,8 @@ impl_message_traits!(account::GetAccountResponse, MessageId::GetAccountResponse)
 ### zero_copy mode
 
 This can be used when all messages are reinterpretable from a slice of bytes (by casting `*mut u8` to `&Message`) and each message type needs to implement `traits::ZeroCopyMessage`.
-Note that if you choose the persist the messages in a file-backed mmap, you should ensure that each type is `#[repr(C)]` for deterministic memory layout.
+Note that if you choose the persist the messages in a file-backed mmap, you should ensure that each type is `#[repr(C)]` for deterministic memory layout over consecutive builds.
+For writing to the message bus you provide a callback with a `ptr` to a zero'd buffer. To prevent UB you may use `std::ptr::addr_of_mut((*ptr).field).write(value);`, see examples.
 
 ## Todo
 
