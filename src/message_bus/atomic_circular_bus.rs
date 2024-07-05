@@ -12,7 +12,7 @@ pub struct CircularBus {
 }
 
 pub trait Config {
-    const BUFFER_SIZE: usize;
+    fn get_buffer_size(&self) -> usize;
 }
 
 struct SharedBuffer {
@@ -23,11 +23,11 @@ struct SharedBuffer {
 }
 
 impl CircularBus {
-    pub fn new<C: Config>(_: &C) -> CircularBus {
-        let mmap = anonymous_mmap::AnonymousMmap::new(C::BUFFER_SIZE).unwrap();
+    pub fn new<C: Config>(config: &C) -> CircularBus {
+        let mmap = anonymous_mmap::AnonymousMmap::new(config.get_buffer_size()).unwrap();
         let write_head = std::sync::atomic::AtomicUsize::new(0);
         let read_head = std::sync::atomic::AtomicUsize::new(0);
-        let wrap_size = C::BUFFER_SIZE >> 1;
+        let wrap_size = config.get_buffer_size() >> 1;
         Self {
             buffer: std::sync::Arc::new(SharedBuffer {
                 mmap,
@@ -40,10 +40,10 @@ impl CircularBus {
 }
 
 impl traits::Writer for CircularBus {
-    fn write<M: traits::Message, H: traits::Handler, F: FnMut(&mut [u8])>(
+    fn write<M: traits::Message, H: traits::Handler, F: FnOnce(&mut [u8])>(
         &self,
         size: usize,
-        mut callback: F,
+        callback: F,
     ) {
         let aligned_size = messenger::align_to_usize(size);
         let len = messenger::ALIGNED_HEADER_SIZE + aligned_size;
@@ -74,14 +74,13 @@ impl traits::Writer for CircularBus {
 
         let new_read_head = position + len;
         loop {
-            match self.buffer.read_head.compare_exchange_weak(
+            if let Ok(_) = self.buffer.read_head.compare_exchange_weak(
                 position,
                 new_read_head,
                 std::sync::atomic::Ordering::Release,
                 std::sync::atomic::Ordering::Relaxed,
             ) {
-                Ok(_) => break,
-                _ => continue,
+                break;
             }
         }
     }
@@ -152,7 +151,9 @@ mod tests {
     struct Config {}
 
     impl super::Config for Config {
-        const BUFFER_SIZE: usize = 4096;
+        fn get_buffer_size(&self) -> usize {
+            4096
+        }
     }
 
     impl traits::Handler for HandlerA {

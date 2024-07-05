@@ -14,10 +14,19 @@ pub trait Handle<M: Message> {
     fn handle<W: Writer>(&mut self, message: &M, writer: &W);
 }
 
+#[cfg(not(feature = "zero_copy"))]
 pub trait Message {
     type Id: Into<u16>;
     const ID: Self::Id;
-    #[cfg(feature = "zero_copy")]
+}
+
+#[cfg(feature = "zero_copy")]
+pub trait Message
+where
+    Self: Sized,
+{
+    type Id: Into<u16>;
+    const ID: Self::Id;
     const SIZE: usize = std::mem::size_of::<Self>();
 }
 
@@ -26,7 +35,7 @@ pub trait Reader {
 }
 
 pub trait Writer {
-    fn write<M: Message, H: Handler, F: FnMut(&mut [u8])>(&self, size: usize, callback: F);
+    fn write<M: Message, H: Handler, F: FnOnce(&mut [u8])>(&self, size: usize, callback: F);
 }
 
 pub trait MessageBus: Reader + Writer + Sync + Send {}
@@ -73,7 +82,7 @@ pub trait Sender {
     fn send<M: ExtendedMessage, W: Writer>(message: &M, writer: &W);
 
     #[cfg(feature = "zero_copy")]
-    fn send<M: ZeroCopyMessage, W: Writer, F: FnMut(*mut M)>(writer: &W, callback: F);
+    fn send<M: ZeroCopyMessage, W: Writer, F: FnOnce(*mut M)>(writer: &W, callback: F);
 }
 
 impl<H: Handler> Sender for H {
@@ -89,7 +98,7 @@ impl<H: Handler> Sender for H {
 
     #[cfg(feature = "zero_copy")]
     #[inline]
-    fn send<M: ZeroCopyMessage, W: Writer, F: FnMut(*mut M)>(writer: &W, mut callback: F) {
+    fn send<M: ZeroCopyMessage, W: Writer, F: FnOnce(*mut M)>(writer: &W, callback: F) {
         writer.write::<M, Self, _>(M::SIZE, |buffer| {
             let ptr = buffer.as_mut_ptr() as *mut M;
             callback(ptr);

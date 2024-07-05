@@ -6,7 +6,7 @@
 /// ``` ignore
 /// Messenger! {
 ///     config::Config,
-///     rust_messenger::message_bus::MemoryBus,
+///     rust_messenger::message_bus::CircularBus,
 ///     WorkerA:
 ///         handlers: [
 ///             handler_a: handlers::HandlerA,
@@ -43,10 +43,10 @@
 ///     config: config::Config,
 /// }
 ///
-/// impl rust_messenger::Messenger<MemoryBus> {
-///     pub fn new(config: config::Config) -> rust_messenger::Messenger<MemoryBus> {
+/// impl rust_messenger::Messenger<CircularBus> {
+///     pub fn new(config: config::Config) -> rust_messenger::Messenger<CircularBus> {
 ///         rust_messenger::Messenger {
-///             message_bus: MemoryBus::new(),
+///             message_bus: CircularBus::new(),
 ///             stop: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
 ///             config,
 ///         }

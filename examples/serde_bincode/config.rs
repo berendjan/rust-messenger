@@ -4,5 +4,7 @@ pub struct Config {
 }
 
 impl rust_messenger::message_bus::atomic_circular_bus::Config for Config {
-    const BUFFER_SIZE: usize = 4096;
+    fn get_buffer_size(&self) -> usize {
+        4096
+    }
 }
