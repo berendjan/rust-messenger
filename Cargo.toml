@@ -6,10 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-zero_copy = []
+default = ["tokio"]
 
 [dependencies]
 libc = "0.2.153"
+tokio = { version = "*", optional = true }
 
 [dev-dependencies]
 bincode = "1.3.3"

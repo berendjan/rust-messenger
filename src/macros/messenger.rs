@@ -4,7 +4,8 @@
 ///
 /// example:
 /// ``` ignore
-/// Messenger! {
+/// use rust_messenger::traits::extended::DeserializeFrom;
+/// rust_messenger::Messenger! {
 ///     config::Config,
 ///     rust_messenger::message_bus::CircularBus,
 ///     WorkerA:
@@ -31,13 +32,12 @@
 /// ```ignore
 /// use rust_messenger::messenger;
 /// use rust_messenger::traits;
-/// use rust_messenger::traits::DeserializeMessage;
-/// use rust_messenger::traits::Handle;
-/// use rust_messenger::traits::Handler;
-/// use rust_messenger::traits::Message;
-/// use rust_messenger::traits::Router;
+/// use rust_messenger::traits::core::Handle;
+/// use rust_messenger::traits::core::Handler;
+/// use rust_messenger::traits::core::Message;
+/// use rust_messenger::traits::core::Router;
 ///
-/// pub struct Messenger<MB: traits::MessageBus> {
+/// pub struct Messenger<MB: traits::core::MessageBus> {
 ///     message_bus: MB,
 ///     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ///     config: config::Config,
@@ -86,7 +86,7 @@
 /// }
 ///
 /// impl WorkerA {
-///     fn run_task<MB: traits::MessageBus>(mut message_bus: MB, config: config::Config, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+///     fn run_task<MB: traits::core::MessageBus>(mut message_bus: MB, config: config::Config, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
 ///         let mut worker = WorkerA {
 ///             position: 0,
 ///             handler_a: handlers::HandlerA::new(&config),
@@ -96,7 +96,7 @@
 ///         worker.run(&mut message_bus)
 ///     }
 ///
-///     fn run<MB: traits::MessageBus>(&mut self, message_bus: &mut MB) {
+///     fn run<MB: traits::core::MessageBus>(&mut self, message_bus: &mut MB) {
 ///         self.handler_a.on_start(message_bus);
 ///         self.handler_b.on_start(message_bus);
 ///         loop {
@@ -118,7 +118,7 @@
 /// }
 ///
 /// impl WorkerB {
-///     pub fn run_task<MB: traits::MessageBus>(mut message_bus: MB, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+///     pub fn run_task<MB: traits::core::MessageBus>(mut message_bus: MB, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
 ///         let mut worker = WorkerB {
 ///             position: 0,
 ///             handler_c: handlers::HandlerC::new(),
@@ -126,7 +126,7 @@
 ///         };
 ///         worker.run(&mut message_bus)
 ///     }
-///     pub fn run<MB: traits::MessageBus>(&mut self, message_bus: &mut MB) {
+///     pub fn run<MB: traits::core::MessageBus>(&mut self, message_bus: &mut MB) {
 ///         self.handler_c.on_start(message_bus);
 ///         loop {
 ///             if let Some((header, buffer)) = message_bus.read(self.position) {
@@ -144,9 +144,9 @@
 ///     }
 /// }
 ///
-/// impl traits::Router for WorkerA {
+/// impl traits::core::Router for WorkerA {
 ///     #[inline]
-///     fn route<W: traits::Writer>(&mut self, header: &rust_messenger::Header, buffer: &[u8], writer: &W) {
+///     fn route<W: traits::core::Writer>(&mut self, header: &rust_messenger::Header, buffer: &[u8], writer: &W) {
 ///         match (header.source.into(), header.message_id.into()) {
 ///             (handlers::HandlerB::ID, messages::MessageA::ID) => {
 ///                 let message = <$message>::deserialize_from(&buffer);
@@ -162,9 +162,9 @@
 ///     }
 /// }
 ///
-/// impl traits::Router for WorkerB {
+/// impl traits::core::Router for WorkerB {
 ///     #[inline]
-///     fn route<W: traits::Writer>(&mut self, header: &rust_messenger::Header, buffer: &[u8], writer: &W) {
+///     fn route<W: traits::core::Writer>(&mut self, header: &rust_messenger::Header, buffer: &[u8], writer: &W) {
 ///         match (header.source.into(), header.message_id.into()) {
 ///             (handlers::HandlerB::ID, messages::MessageA::ID) => {
 ///                 let message = <$message>::deserialize_from(&buffer);
@@ -189,21 +189,20 @@ macro_rules! Messenger {
     (
         $config:ty,
         $message_bus:ty,
-        $( $worker:ident:
-        handlers: [ $( $handler_ident:ident: $handler_ty:ty $(,)? ),+ ]
-        routes: [ $( $source:ty, $message:ty: [ $( $receiver:ident $(,)? ),+ ] ),+ $(,)? ]
-        $(in_place)?
-        $(from)?
-    )+ ) => {
+        $(
+            $worker:ident:
+                handlers: [ $( $handler_ident:ident: $handler_ty:ty $(,)? ),+ ]
+                routes: [ $( $source:ty, $message:ty: [ $( $receiver:ident $(,)? ),+ ] ),+ $(,)? ]
+        )+
+    ) => {
         use rust_messenger::messenger;
         use rust_messenger::traits;
-        use rust_messenger::traits::DeserializeFrom;
-        use rust_messenger::traits::Handle;
-        use rust_messenger::traits::Handler;
-        use rust_messenger::traits::Message;
-        use rust_messenger::traits::Router;
+        use rust_messenger::traits::core::Handle;
+        use rust_messenger::traits::core::Handler;
+        use rust_messenger::traits::core::Message;
+        use rust_messenger::traits::core::Router;
 
-        pub struct Messenger<MB: traits::MessageBus> {
+        pub struct Messenger<MB: traits::core::MessageBus> {
             message_bus: MB,
             stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
             config: $config,
@@ -245,7 +244,7 @@ macro_rules! Messenger {
             }
 
             impl $worker {
-                fn run_task<MB: traits::MessageBus>(mut message_bus: MB, config: $config, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+                fn run_task<MB: traits::core::MessageBus>(mut message_bus: MB, config: $config, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
                     let mut worker = $worker {
                         position: 0,
                         $($handler_ident: <$handler_ty>::new(&config),)+
@@ -254,7 +253,7 @@ macro_rules! Messenger {
                     worker.run(&mut message_bus)
                 }
 
-                fn run<MB: traits::MessageBus>(&mut self, message_bus: &mut MB) {
+                fn run<MB: traits::core::MessageBus>(&mut self, message_bus: &mut MB) {
                     $(
                         self.$handler_ident.on_start(message_bus);
                     )+
@@ -278,13 +277,13 @@ macro_rules! Messenger {
                 }
             }
 
-            impl traits::Router for $worker {
+            impl traits::core::Router for $worker {
                 #[inline]
-                fn route<W: traits::Writer>(&mut self, header: &messenger::Header, buffer: &[u8], writer: &W) {
+                fn route<W: traits::core::Writer>(&mut self, header: &messenger::Header, buffer: &[u8], writer: &W) {
                     match (header.source.into(), header.message_id.into()) {
                         $(
                             (<$source>::ID, <$message>::ID) => {
-                                let message = <$message>::deserialize_from(&buffer);
+                                let message = <$message>::deserialize_from(buffer);
                                 $(
                                     self.$receiver.handle(&message, writer);
                                 )+

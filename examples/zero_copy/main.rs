@@ -2,9 +2,7 @@ mod config;
 mod handlers;
 mod messages;
 
-// (!) This use statement is required.
-use rust_messenger::traits::core::DeserializeFrom;
-
+use rust_messenger::traits::zero_copy::CastFrom;
 rust_messenger::Messenger! {
     config::Config,
     rust_messenger::message_bus::atomic_circular_bus::CircularBus,

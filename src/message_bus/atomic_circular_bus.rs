@@ -39,8 +39,8 @@ impl CircularBus {
     }
 }
 
-impl traits::Writer for CircularBus {
-    fn write<M: traits::Message, H: traits::Handler, F: FnOnce(&mut [u8])>(
+impl traits::core::Writer for CircularBus {
+    fn write<M: traits::core::Message, H: traits::core::Handler, F: FnOnce(&mut [u8])>(
         &self,
         size: usize,
         callback: F,
@@ -86,7 +86,7 @@ impl traits::Writer for CircularBus {
     }
 }
 
-impl traits::Reader for CircularBus {
+impl traits::core::Reader for CircularBus {
     fn read(&self, position: usize) -> Option<(&messenger::Header, &[u8])> {
         let read_head_position = self
             .buffer
@@ -111,7 +111,7 @@ impl traits::Reader for CircularBus {
     }
 }
 
-impl traits::MessageBus for CircularBus {}
+impl traits::core::MessageBus for CircularBus {}
 
 #[cfg(test)]
 mod tests {
@@ -122,13 +122,12 @@ mod tests {
         data: [u16; 5],
     }
 
-    impl traits::Message for MsgA {
+    impl traits::core::Message for MsgA {
         type Id = u16;
         const ID: u16 = 2;
     }
 
-    #[cfg(not(feature = "zero_copy"))]
-    impl traits::ExtendedMessage for MsgA {
+    impl traits::extended::ExtendedMessage for MsgA {
         fn get_size(&self) -> usize {
             std::mem::size_of::<Self>()
         }
@@ -143,8 +142,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "zero_copy")]
-    impl traits::ZeroCopyMessage for MsgA {}
+    impl traits::zero_copy::ZeroCopyMessage for MsgA {}
 
     struct HandlerA {}
 
@@ -156,7 +154,7 @@ mod tests {
         }
     }
 
-    impl traits::Handler for HandlerA {
+    impl traits::core::Handler for HandlerA {
         type Id = u16;
         const ID: u16 = 1;
         type Config = Config;
@@ -165,13 +163,12 @@ mod tests {
         }
     }
 
-    #[cfg(not(feature = "zero_copy"))]
     #[test]
     fn test_circular_bus() {
-        use crate::traits::Handler;
-        use crate::traits::Message;
-        use crate::traits::Reader;
-        use crate::traits::Sender;
+        use crate::traits::core::Handler;
+        use crate::traits::core::Message;
+        use crate::traits::core::Reader;
+        use crate::traits::extended::Sender;
 
         let config = Config {};
         let bus = CircularBus::new(&config);
@@ -197,13 +194,12 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "zero_copy")]
     #[test]
-    fn test_circular_bus() {
-        use crate::traits::Handler;
-        use crate::traits::Message;
-        use crate::traits::Reader;
-        use crate::traits::Sender;
+    fn test_zero_copy_circular_bus() {
+        use crate::traits::core::Handler;
+        use crate::traits::core::Message;
+        use crate::traits::core::Reader;
+        use crate::traits::zero_copy::Sender;
 
         let config = Config {};
         let bus = CircularBus::new(&config);

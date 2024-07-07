@@ -17,15 +17,13 @@
 /// handlers are no longer single threaded!
 ///
 
-pub trait AsyncMessageBus: AsyncReader + Writer + Sync + Send {}
-
-struct AsyncMessageBusWrapper<MB: MessageBus> {
+struct AsyncMessageBus<MB: crate::traits::core::MessageBus> {
     message_bus: MB,
     notify: std::sync::Arc<tokio::sync::Notify>,
 }
 
-impl<MB: MessageBus> AsyncMessageBusWrapper<MB> {
-    pub fn new<C: Config>(config: &C) -> AsyncMessageBusWrapper {
+impl<MB: crate::traits::core::MessageBus> AsyncMessageBus<MB> {
+    pub fn new<C: Config>(config: &C) -> AsyncMessageBus {
         let message_bus = MB::new(config);
         let notify = std::sync::Arc::new(tokio::sync::Notify::new());
         Self {
@@ -35,7 +33,7 @@ impl<MB: MessageBus> AsyncMessageBusWrapper<MB> {
     }
 }
 
-impl<MB: MessageBus> traits::Writer for AsyncMessageBusWrapper<MB> {
+impl<MB: MessageBus> traits::Writer for AsyncMessageBus<MB> {
     fn write<M: traits::Message, H: traits::Handler, F: FnOnce(&mut [u8])>(
         &self,
         size: usize,

@@ -24,21 +24,9 @@ macro_rules! impl_message_traits {
             const ID: MessageId = $id;
         }
 
-        impl traits::core::DeserializeFrom for $type {
-            fn deserialize_from(buffer: &[u8]) -> Self {
-                bincode::deserialize(buffer).unwrap()
-            }
-        }
+        impl traits::zero_copy::CastFrom for $type {}
 
-        impl traits::extended::ExtendedMessage for $type {
-            fn get_size(&self) -> usize {
-                bincode::serialized_size(self).unwrap() as usize
-            }
-
-            fn write_into(&self, buffer: &mut [u8]) {
-                bincode::serialize_into(buffer, self).unwrap();
-            }
-        }
+        impl traits::zero_copy::ZeroCopyMessage for $type {}
     };
 }
 

@@ -11,9 +11,7 @@ To run:
 
 ```bash
 cargo run --example serde_bincode
-
-# run with zero_copy feature
-cargo run --features zero_copy --example serde_bincode
+cargo run --example zero_copy
 ```
 
 ## Dev Quickstart
@@ -23,14 +21,10 @@ rustup toolchain install nightly
 rustup +nightly component add miri
 rustup override set nightly
 
-# test with and without zero_copy enabled
 cargo miri test
-cargo miri test --features zero_copy
 
 cargo miri run --example serde_bincode
-
-# run with zero_copy feature
-cargo miri run --features zero_copy --example serde_bincode
+cargo miri run --example zero_copy
 ```
 
 This library implements a nano-services model where _handlers_ are tiny services.
@@ -45,9 +39,9 @@ The library consists of 3 main parts:
 
 The source code consists of 5 main parts, where the MessageBus can be changes depending on the needs of the user.
 
-1. `messenger.rs` contains the root object.
-2. `macro.rs` generates the routing logic and the worker objects.
-3. `traits.rs` specifies all the traits that are implemented.
+1. `messenger.rs` contains the header object.
+2. `macros/` generates the routing logic and the worker objects.
+3. `traits/` specifies all the traits that are implementable.
 4. `message_bus/` contains possible implementations of the message bus required for concurrently sending/receiving data, uses mmap wrappers.
 5. `mmap/` contains mmap wrappers for the message bus implementations.
 
@@ -55,10 +49,11 @@ The user is left to implement _handlers_ services which implement the `Handler` 
 
 ## Features
 
-The library has 2 operating modes (as features):
+The library has 3 operating modes:
 
 1. default
 2. zero_copy
+3. async
 
 ### default mode
 
@@ -150,6 +145,7 @@ For writing to the message bus you provide a callback with a `ptr` to a zero'd b
 - [ ] Condvar Message Bus, that blocks if there are no new messages to be read, write should notify_all
 - [ ] Add Replay Functionality for Persistant (File Backed) Message Bus
 - [ ] Add AsyncBusWrapper<MB> using tokio notify
+- [x] remove zero copy feature
 - [x] Linux Anonymous Mmap Wrapper
 - [x] Stop functionality
 - [x] Added user configuration input

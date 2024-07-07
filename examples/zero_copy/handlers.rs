@@ -2,7 +2,7 @@ use crate::config;
 use crate::messages;
 
 use rust_messenger::traits;
-use rust_messenger::traits::extended::Sender;
+use rust_messenger::traits::zero_copy::Sender;
 
 rust_messenger::messenger_id_enum! {
     HandlerId {
@@ -26,7 +26,9 @@ impl traits::core::Handler for HandlerA {
     fn on_start<W: traits::core::Writer>(&mut self, writer: &mut W) {
         println!("HandlerA on_start called");
 
-        Self::send(&messages::MessageB { other_val: 0 }, writer);
+        Self::send::<messages::MessageB, _, _>(writer, |msg| unsafe {
+            std::ptr::addr_of_mut!((*msg).other_val).write(0)
+        });
     }
 }
 
@@ -35,10 +37,9 @@ impl traits::core::Handle<messages::MessageA> for HandlerA {
         if message.val < 10 {
             println!("received messages::MessageA at HandlerA: {}", message.val);
 
-            let response = messages::MessageB {
-                other_val: message.val as u16 + 1,
-            };
-            Self::send(&response, writer);
+            Self::send::<messages::MessageB, _, _>(writer, |msg| unsafe {
+                std::ptr::addr_of_mut!((*msg).other_val).write(message.val as u16 + 1)
+            });
         }
     }
 }
@@ -62,10 +63,9 @@ impl traits::core::Handle<messages::MessageB> for HandlerB {
                 message.other_val
             );
 
-            let response = messages::MessageA {
-                val: message.other_val as u8 + 1,
-            };
-            Self::send(&response, writer);
+            Self::send::<messages::MessageA, _, _>(writer, |msg| unsafe {
+                std::ptr::addr_of_mut!((*msg).val).write(message.other_val as u8 + 1)
+            });
         }
     }
 }
