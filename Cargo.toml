@@ -10,7 +10,11 @@ default = ["tokio"]
 
 [dependencies]
 libc = "0.2.153"
-tokio = { version = "*", optional = true }
+tokio = { version = "*", optional = true, features = [
+    "rt-multi-thread",
+    "sync",
+    "macros",
+] }
 
 [dev-dependencies]
 bincode = "1.3.3"

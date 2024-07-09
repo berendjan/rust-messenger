@@ -23,7 +23,7 @@ impl traits::core::Handler for HandlerA {
         HandlerA {}
     }
 
-    fn on_start<W: traits::core::Writer>(&mut self, writer: &mut W) {
+    fn on_start<W: traits::core::Writer>(&mut self, writer: &W) {
         println!("HandlerA on_start called");
 
         Self::send::<messages::MessageB, _, _>(writer, |msg| unsafe {

@@ -1,4 +1,4 @@
-/// This trait is used to remind you that using the zero copy feature
+/// This trait is used to remind you that using the zero copy option
 /// will require you to ensure that each message is trivially copyable.
 /// Meaning it should be possible to cast a `mut* u8` type to a `mut* Self`
 /// on the buffer.

@@ -22,23 +22,28 @@ impl traits::core::Handler for HandlerA {
         println!("HandlerA new called with config value \"{}\"", config.value);
         HandlerA {}
     }
+}
 
-    fn on_start<W: traits::core::Writer>(&mut self, writer: &W) {
+impl traits::async_traits::AsyncHandler for HandlerA {
+    async fn async_on_start<W: traits::core::Writer>(&mut self, writer: &W) {
         println!("HandlerA on_start called");
 
         Self::send(&messages::MessageB { other_val: 0 }, writer);
     }
 }
 
-impl traits::core::Handle<messages::MessageA> for HandlerA {
-    fn handle<W: traits::core::Writer>(&mut self, message: &messages::MessageA, writer: &W) {
+impl traits::async_traits::AsyncHandle<messages::MessageA> for HandlerA {
+    async fn handle<W: traits::core::Writer>(
+        message: std::sync::Arc<messages::MessageA>,
+        writer: W,
+    ) {
         if message.val < 10 {
             println!("received messages::MessageA at HandlerA: {}", message.val);
 
             let response = messages::MessageB {
                 other_val: message.val as u16 + 1,
             };
-            Self::send(&response, writer);
+            Self::send(&response, &writer);
         }
     }
 }
@@ -54,8 +59,13 @@ impl traits::core::Handler for HandlerB {
     }
 }
 
-impl traits::core::Handle<messages::MessageB> for HandlerB {
-    fn handle<W: traits::core::Writer>(&mut self, message: &messages::MessageB, writer: &W) {
+impl traits::async_traits::AsyncHandler for HandlerB {}
+
+impl traits::async_traits::AsyncHandle<messages::MessageB> for HandlerB {
+    async fn handle<W: traits::core::Writer>(
+        message: std::sync::Arc<messages::MessageB>,
+        writer: W,
+    ) {
         if message.other_val < 10 {
             println!(
                 "received messages::MessageB at HandlerB: {}",
@@ -65,7 +75,7 @@ impl traits::core::Handle<messages::MessageB> for HandlerB {
             let response = messages::MessageA {
                 val: message.other_val as u8 + 1,
             };
-            Self::send(&response, writer);
+            Self::send(&response, &writer);
         }
     }
 }
@@ -81,8 +91,13 @@ impl traits::core::Handler for HandlerC {
     }
 }
 
-impl traits::core::Handle<messages::MessageA> for HandlerC {
-    fn handle<W: traits::core::Writer>(&mut self, message: &messages::MessageA, _writer: &W) {
+impl traits::async_traits::AsyncHandler for HandlerC {}
+
+impl traits::async_traits::AsyncHandle<messages::MessageA> for HandlerC {
+    async fn handle<W: traits::core::Writer>(
+        message: std::sync::Arc<messages::MessageA>,
+        _writer: W,
+    ) {
         println!("received messages::MessageA at HandlerC: {}", message.val)
     }
 }

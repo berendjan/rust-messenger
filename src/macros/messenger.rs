@@ -37,16 +37,16 @@
 /// use rust_messenger::traits::core::Message;
 /// use rust_messenger::traits::core::Router;
 ///
-/// pub struct Messenger<MB: traits::core::MessageBus> {
-///     message_bus: MB,
+/// pub struct Messenger {
+///     message_bus: rust_messenger::message_bus::CircularBus,
 ///     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ///     config: config::Config,
 /// }
 ///
-/// impl rust_messenger::Messenger<CircularBus> {
-///     pub fn new(config: config::Config) -> rust_messenger::Messenger<CircularBus> {
+/// impl rust_messenger::Messenger {
+///     pub fn new(config: config::Config) -> rust_messenger::Messenger {
 ///         rust_messenger::Messenger {
-///             message_bus: CircularBus::new(),
+///             message_bus: rust_messenger::message_bus::CircularBus::new(&config),
 ///             stop: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
 ///             config,
 ///         }
@@ -118,7 +118,7 @@
 /// }
 ///
 /// impl WorkerB {
-///     pub fn run_task<MB: traits::core::MessageBus>(mut message_bus: MB, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+///     pub fn run_task<MB: traits::core::MessageBus>(mut message_bus: MB, config: config::Config, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
 ///         let mut worker = WorkerB {
 ///             position: 0,
 ///             handler_c: handlers::HandlerC::new(),
@@ -149,12 +149,12 @@
 ///     fn route<W: traits::core::Writer>(&mut self, header: &rust_messenger::Header, buffer: &[u8], writer: &W) {
 ///         match (header.source.into(), header.message_id.into()) {
 ///             (handlers::HandlerB::ID, messages::MessageA::ID) => {
-///                 let message = <$message>::deserialize_from(&buffer);
+///                 let message = <messages::MessageA>::deserialize_from(&buffer);
 ///                 self.handler_a.handle(&message, writer);
 ///             }
 ///
 ///             (handlers::HandlerA::ID, messages::MessageB::ID) => {
-///                 let message = <$message>::deserialize_from(&buffer);
+///                 let message = <messages::MessageB>::deserialize_from(&buffer);
 ///                 self.handler_b.handle(&message, writer);
 ///             }
 ///             _ => {}
@@ -167,7 +167,7 @@
 ///     fn route<W: traits::core::Writer>(&mut self, header: &rust_messenger::Header, buffer: &[u8], writer: &W) {
 ///         match (header.source.into(), header.message_id.into()) {
 ///             (handlers::HandlerB::ID, messages::MessageA::ID) => {
-///                 let message = <$message>::deserialize_from(&buffer);
+///                 let message = <messages::MessageA>::deserialize_from(&buffer);
 ///                 self.handler_c.handle(&message, writer);
 ///             }
 ///             _ => {}
@@ -202,14 +202,14 @@ macro_rules! Messenger {
         use rust_messenger::traits::core::Message;
         use rust_messenger::traits::core::Router;
 
-        pub struct Messenger<MB: traits::core::MessageBus> {
-            message_bus: MB,
+        pub struct Messenger {
+            message_bus: $message_bus,
             stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
             config: $config,
         }
 
-        impl Messenger<$message_bus> {
-            pub fn new(config: $config) -> Messenger<$message_bus> {
+        impl Messenger {
+            pub fn new(config: $config) -> Messenger {
                 Messenger {
                     message_bus: <$message_bus>::new(&config),
                     stop: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),

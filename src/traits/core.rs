@@ -5,8 +5,8 @@ pub trait Handler {
     const ID: Self::Id;
     type Config;
     fn new(config: &Self::Config) -> Self;
-    fn on_start<W: Writer>(&mut self, _writer: &mut W) {}
-    fn on_loop<W: Writer>(&mut self, _writer: &mut W) {}
+    fn on_start<W: Writer>(&mut self, _writer: &W) {}
+    fn on_loop<W: Writer>(&mut self, _writer: &W) {}
     fn on_stop(&mut self) {}
 }
 
