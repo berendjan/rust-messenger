@@ -25,6 +25,7 @@ cargo miri test
 
 cargo miri run --example serde_bincode
 cargo miri run --example zero_copy
+cargo miri run --example async
 ```
 
 This library implements a nano-services model where _handlers_ are tiny services.
