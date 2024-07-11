@@ -4,7 +4,7 @@ pub trait Handler {
     type Id: Into<u16>;
     const ID: Self::Id;
     type Config;
-    fn new(config: &Self::Config) -> Self;
+    fn new<W: Writer>(config: &Self::Config, writer: &W) -> Self;
     fn on_start<W: Writer>(&mut self, _writer: &W) {}
     fn on_loop<W: Writer>(&mut self, _writer: &W) {}
     fn on_stop(&mut self) {}
@@ -23,11 +23,11 @@ pub trait Reader {
     fn read(&self, position: usize) -> Option<(&messenger::Header, &[u8])>;
 }
 
-pub trait Writer {
+pub trait Writer: Sync + Send + Clone + 'static {
     fn write<M: Message, H: Handler, F: FnOnce(&mut [u8])>(&self, size: usize, callback: F);
 }
 
-pub trait MessageBus: Reader + Writer + Sync + Send {}
+pub trait MessageBus: Reader + Writer {}
 
 pub trait Router {
     fn route<W: Writer>(&mut self, header: &messenger::Header, buffer: &[u8], writer: &W);

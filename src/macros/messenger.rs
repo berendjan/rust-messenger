@@ -89,8 +89,8 @@
 ///     fn run_task<MB: traits::core::MessageBus>(mut message_bus: MB, config: config::Config, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
 ///         let mut worker = WorkerA {
 ///             position: 0,
-///             handler_a: handlers::HandlerA::new(&config),
-///             handler_b: handlers::HandlerB::new(&config),
+///             handler_a: handlers::HandlerA::new(&config, &message_bus),
+///             handler_b: handlers::HandlerB::new(&config, &message_bus),
 ///             stop,
 ///         };
 ///         worker.run(&mut message_bus)
@@ -121,7 +121,7 @@
 ///     pub fn run_task<MB: traits::core::MessageBus>(mut message_bus: MB, config: config::Config, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
 ///         let mut worker = WorkerB {
 ///             position: 0,
-///             handler_c: handlers::HandlerC::new(),
+///             handler_c: handlers::HandlerC::new(&config, &message_bus),
 ///             stop,
 ///         };
 ///         worker.run(&mut message_bus)
@@ -247,7 +247,7 @@ macro_rules! Messenger {
                 fn run_task<MB: traits::core::MessageBus>(mut message_bus: MB, config: $config, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
                     let mut worker = $worker {
                         position: 0,
-                        $($handler_ident: <$handler_ty>::new(&config),)+
+                        $($handler_ident: <$handler_ty>::new(&config, &message_bus),)+
                         stop,
                     };
                     worker.run(&mut message_bus)

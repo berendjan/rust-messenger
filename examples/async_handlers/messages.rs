@@ -1,19 +1,21 @@
 use rust_messenger::traits;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct MessageA {
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+pub struct Request {
+    pub request_id: Option<usize>,
     pub val: u8,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct MessageB {
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+pub struct Response {
+    pub request_id: usize,
     pub other_val: u16,
 }
 
 rust_messenger::messenger_id_enum!(
     MessageId {
-        MessageA = 0,
-        MessageB = 1,
+        Request = 0,
+        Response = 1,
     }
 );
 
@@ -42,5 +44,5 @@ macro_rules! impl_message_traits {
     };
 }
 
-impl_message_traits!(MessageA, MessageId::MessageA);
-impl_message_traits!(MessageB, MessageId::MessageB);
+impl_message_traits!(Request, MessageId::Request);
+impl_message_traits!(Response, MessageId::Response);

@@ -158,7 +158,7 @@ mod tests {
         type Id = u16;
         const ID: u16 = 1;
         type Config = Config;
-        fn new(_config: &Config) -> Self {
+        fn new<W: traits::core::Writer>(_config: &Config, _writer: &W) -> Self {
             Self {}
         }
     }

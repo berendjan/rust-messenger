@@ -18,7 +18,7 @@ impl traits::core::Handler for HandlerA {
     type Id = HandlerId;
     const ID: HandlerId = HandlerId::HandlerA;
     type Config = config::Config;
-    fn new(config: &Self::Config) -> Self {
+    fn new<W: traits::core::Writer>(config: &Self::Config, _: &W) -> Self {
         println!("HandlerA new called with config value \"{}\"", config.value);
         HandlerA {}
     }
@@ -50,7 +50,7 @@ impl traits::core::Handler for HandlerB {
     type Id = HandlerId;
     const ID: HandlerId = HandlerId::HandlerB;
     type Config = config::Config;
-    fn new(_: &Self::Config) -> Self {
+    fn new<W: traits::core::Writer>(_: &Self::Config, _: &W) -> Self {
         HandlerB {}
     }
 }
@@ -76,7 +76,7 @@ impl traits::core::Handler for HandlerC {
     type Id = HandlerId;
     const ID: HandlerId = HandlerId::HandlerC;
     type Config = config::Config;
-    fn new(_: &Self::Config) -> Self {
+    fn new<W: traits::core::Writer>(_: &Self::Config, _: &W) -> Self {
         HandlerC {}
     }
 }
