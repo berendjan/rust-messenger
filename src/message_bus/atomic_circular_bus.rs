@@ -40,7 +40,7 @@ impl CircularBus {
 }
 
 impl traits::core::Writer for CircularBus {
-    fn write<M: traits::core::Message, H: traits::core::Handler, F: FnOnce(&mut [u8])>(
+    fn write<'a, M: traits::core::Message, H: traits::core::Handler, F: FnOnce(&'a mut [u8])>(
         &self,
         size: usize,
         callback: F,
@@ -87,7 +87,7 @@ impl traits::core::Writer for CircularBus {
 }
 
 impl traits::core::Reader for CircularBus {
-    fn read(&self, position: usize) -> Option<(&messenger::Header, &[u8])> {
+    fn read<'a>(&self, position: usize) -> Option<(&'a messenger::Header, &'a [u8])> {
         let read_head_position = self
             .buffer
             .read_head

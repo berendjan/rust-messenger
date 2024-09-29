@@ -23,7 +23,6 @@ use rust_messenger::traits::core::DeserializeFrom;
 
 rust_messenger::Messenger! {
     config::Config,
-    rust_messenger::message_bus::atomic_circular_bus::CircularBus,
     WorkerA:
         handlers: [
             sync_handler: handlers::SyncHandler,
@@ -57,9 +56,9 @@ pub fn main() {
         runtime,
         addr: "127.0.0.1:12121".to_string(),
     };
-    let messenger = Messenger::new(config);
-
-    let handles = messenger.run();
+    let messenger =
+        Messenger::new(rust_messenger::message_bus::atomic_circular_bus::CircularBus::new(&config));
+    let handles = messenger.run(&config);
 
     println!("Messenger started, sleeping for 5 milliseconds");
     std::thread::sleep(std::time::Duration::from_millis(5));

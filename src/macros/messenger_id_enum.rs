@@ -3,7 +3,7 @@
 macro_rules! messenger_id_enum {
     ($name:ident { $($variant:ident = $value:expr),+ $(,)? }) => {
         #[repr(u16)]
-        #[derive(PartialEq, Eq, Debug)]
+        #[derive(PartialEq, Eq, Debug, Clone, Copy)]
         pub enum $name {
             $($variant = $value),+
         }

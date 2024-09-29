@@ -20,17 +20,19 @@ pub trait Message {
 }
 
 pub trait Reader {
-    fn read(&self, position: usize) -> Option<(&messenger::Header, &[u8])>;
+    fn read<'a>(&self, position: usize) -> Option<(&'a messenger::Header, &'a [u8])>;
 }
 
 pub trait Writer: Sync + Send + Clone + 'static {
-    fn write<M: Message, H: Handler, F: FnOnce(&mut [u8])>(&self, size: usize, callback: F);
+    fn write<'a, M: Message, H: Handler, F: FnOnce(&'a mut [u8])>(&self, size: usize, callback: F);
 }
 
-pub trait MessageBus: Reader + Writer {}
+pub trait MessageBus: Reader + Writer {
+    fn on_stop(&self) {}
+}
 
 pub trait Router {
-    fn route<W: Writer>(&mut self, header: &messenger::Header, buffer: &[u8], writer: &W);
+    fn route<'a, W: Writer>(&mut self, header: &'a messenger::Header, buffer: &'a [u8], writer: &W);
 }
 
 /// Optional trait that returns an owned object deserialized from the message bus.

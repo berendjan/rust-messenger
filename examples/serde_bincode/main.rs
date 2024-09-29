@@ -7,7 +7,6 @@ use rust_messenger::traits::core::DeserializeFrom;
 
 rust_messenger::Messenger! {
     config::Config,
-    rust_messenger::message_bus::atomic_circular_bus::CircularBus,
     WorkerA:
         handlers: [
             handler_a: handlers::HandlerA,
@@ -30,8 +29,11 @@ pub fn main() {
     let config = config::Config {
         value: "Hello from Config".to_string(),
     };
-    let messenger = Messenger::new(config);
-    let handles = messenger.run();
+    let message_bus = rust_messenger::message_bus::condvar_bus::CondvarBus::new(
+        rust_messenger::message_bus::atomic_circular_bus::CircularBus::new(&config),
+    );
+    let messenger = Messenger::new(message_bus);
+    let handles = messenger.run(&config);
 
     println!("Messenger started, sleeping for 1 millisecond");
     std::thread::sleep(std::time::Duration::from_millis(1));
