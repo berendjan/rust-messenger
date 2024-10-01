@@ -104,7 +104,7 @@ mod tests {
             let ptr = self.buffer.mmap.ptr as *const u8;
             let ptr = unsafe { ptr.add(wrapped_position) };
 
-            Some(unsafe { std::slice::from_raw_parts(ptr as *const u8, ELEMENT_SIZE) })
+            Some(unsafe { std::slice::from_raw_parts(ptr, ELEMENT_SIZE) })
         }
 
         fn write(&self, data: &[u8]) {

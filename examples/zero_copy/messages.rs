@@ -25,7 +25,7 @@ macro_rules! impl_message_traits {
         }
 
         impl $type {
-            pub fn deserialize_from<'a>(buffer: &'a [u8]) -> &'a Self
+            pub fn deserialize_from(buffer: &[u8]) -> &Self
             where
                 Self: traits::zero_copy::ZeroCopyMessage,
             {
