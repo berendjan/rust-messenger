@@ -12,16 +12,6 @@ pub trait ZeroCopyMessage: super::core::Message + Sized {
     const SIZE: usize = std::mem::size_of::<Self>();
 }
 
-pub trait CastFrom: super::core::Message {
-    fn deserialize_from<'a>(buffer: &'a [u8]) -> &'a Self
-    where
-        Self: ZeroCopyMessage,
-    {
-        let ptr = buffer.as_ptr() as *const Self;
-        unsafe { &*ptr }
-    }
-}
-
 pub trait Sender {
     fn send<M: ZeroCopyMessage, W: super::core::Writer, F: FnOnce(*mut M)>(writer: &W, callback: F);
 }

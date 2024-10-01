@@ -142,9 +142,8 @@ For writing to the message bus you provide a callback with a `ptr` to a zero'd b
 - [ ] Linux Growable Mmap Wrapper
 - [ ] Macos Growable Mmap Wrapper
 - [ ] Persistent (File Backed) Message Bus
-- [ ] Condvar Message Bus, that blocks if there are no new messages to be read, write should notify_all
+- [x] Condvar Message Bus, that blocks if there are no new messages to be read, write should notify_all
 - [ ] Add Replay Functionality for Persistant (File Backed) Message Bus
-- [ ] Add AsyncBusWrapper<MB> using tokio notify
 - [x] remove zero copy feature
 - [x] Linux Anonymous Mmap Wrapper
 - [x] Stop functionality

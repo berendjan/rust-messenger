@@ -32,8 +32,8 @@ macro_rules! impl_message_traits {
             const ID: MessageId = $id;
         }
 
-        impl traits::core::DeserializeFrom for $type {
-            fn deserialize_from(buffer: &[u8]) -> Self {
+        impl $type {
+            pub fn deserialize_from(buffer: &[u8]) -> Self {
                 bincode::deserialize(buffer).unwrap()
             }
         }

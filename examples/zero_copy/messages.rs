@@ -24,7 +24,15 @@ macro_rules! impl_message_traits {
             const ID: MessageId = $id;
         }
 
-        impl traits::zero_copy::CastFrom for $type {}
+        impl $type {
+            pub fn deserialize_from<'a>(buffer: &'a [u8]) -> &'a Self
+            where
+                Self: traits::zero_copy::ZeroCopyMessage,
+            {
+                let ptr = buffer.as_ptr() as *const Self;
+                unsafe { &*ptr }
+            }
+        }
 
         impl traits::zero_copy::ZeroCopyMessage for $type {}
     };

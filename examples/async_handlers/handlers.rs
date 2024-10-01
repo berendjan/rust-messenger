@@ -2,7 +2,6 @@ use crate::config;
 use crate::messages;
 
 use rust_messenger::traits;
-use rust_messenger::traits::core::DeserializeFrom;
 use rust_messenger::traits::extended::Sender;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;

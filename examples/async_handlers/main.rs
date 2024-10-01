@@ -18,9 +18,6 @@ mod messages;
 // response reaches the app
 // AsyncClient -> Response(1) -> SyncApp
 
-// (!) This use statement is required.
-use rust_messenger::traits::core::DeserializeFrom;
-
 rust_messenger::Messenger! {
     config::Config,
     WorkerA:

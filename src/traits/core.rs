@@ -32,9 +32,3 @@ pub trait MessageBus: Reader + Writer {
 pub trait Router {
     fn route<'a, W: Writer>(&mut self, header: &'a messenger::Header, buffer: &'a [u8], writer: &W);
 }
-
-/// Optional trait that returns an owned object deserialized from the message bus.
-/// Include either this trait or `rust_messenger::traits::zero_copy::DeserializeFrom`.
-pub trait DeserializeFrom: Message {
-    fn deserialize_from(buffer: &[u8]) -> Self;
-}
