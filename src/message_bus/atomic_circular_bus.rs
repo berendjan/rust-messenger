@@ -74,12 +74,17 @@ impl traits::core::Writer for CircularBus {
 
         let new_read_head = position + len;
         loop {
-            if let Ok(_) = self.buffer.read_head.compare_exchange_weak(
-                position,
-                new_read_head,
-                std::sync::atomic::Ordering::Release,
-                std::sync::atomic::Ordering::Relaxed,
-            ) {
+            if self
+                .buffer
+                .read_head
+                .compare_exchange_weak(
+                    position,
+                    new_read_head,
+                    std::sync::atomic::Ordering::Release,
+                    std::sync::atomic::Ordering::Relaxed,
+                )
+                .is_ok()
+            {
                 break;
             }
         }
@@ -144,8 +149,6 @@ mod tests {
 
     impl traits::zero_copy::ZeroCopyMessage for MsgA {}
 
-    struct HandlerA {}
-
     struct Config {}
 
     impl super::Config for Config {
@@ -154,13 +157,11 @@ mod tests {
         }
     }
 
+    struct HandlerA {}
+
     impl traits::core::Handler for HandlerA {
         type Id = u16;
         const ID: u16 = 1;
-        type Config = Config;
-        fn new<W: traits::core::Writer>(_config: &Config, _writer: &W) -> Self {
-            Self {}
-        }
     }
 
     #[test]
@@ -181,8 +182,8 @@ mod tests {
 
             let (hdr, buffer) = bus.read(position).unwrap();
 
-            assert_eq!(hdr.source, HandlerA::ID.into());
-            assert_eq!(hdr.message_id, MsgA::ID.into());
+            assert_eq!(hdr.source, HandlerA::ID);
+            assert_eq!(hdr.message_id, MsgA::ID);
             let expected_size = messenger::align_to_usize(std::mem::size_of::<MsgA>());
             assert_eq!(hdr.size, expected_size as u16);
 
@@ -211,8 +212,8 @@ mod tests {
 
             let (hdr, buffer) = bus.read(position).unwrap();
 
-            assert_eq!(hdr.source, HandlerA::ID.into());
-            assert_eq!(hdr.message_id, MsgA::ID.into());
+            assert_eq!(hdr.source, HandlerA::ID);
+            assert_eq!(hdr.message_id, MsgA::ID);
             let expected_size = messenger::align_to_usize(std::mem::size_of::<MsgA>());
             assert_eq!(hdr.size, expected_size as u16);
 

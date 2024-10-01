@@ -18,14 +18,16 @@ rust_messenger::messenger_id_enum! {
 
 pub struct SyncApp {}
 
-impl traits::core::Handler for SyncApp {
-    type Id = HandlerId;
-    const ID: HandlerId = HandlerId::SyncApp;
-    type Config = config::Config;
-    fn new<W: traits::core::Writer>(config: &Self::Config, _: &W) -> Self {
+impl SyncApp {
+    pub fn new<W: traits::core::Writer>(config: &config::Config, _: &W) -> Self {
         println!("SyncApp new called with config value \"{}\"", config.value);
         SyncApp {}
     }
+}
+
+impl traits::core::Handler for SyncApp {
+    type Id = HandlerId;
+    const ID: HandlerId = HandlerId::SyncApp;
 
     fn on_start<W: traits::core::Writer>(&mut self, writer: &W) {
         println!("SyncApp on_start called");
@@ -45,11 +47,8 @@ pub struct AsyncClient {
     addr: String,
 }
 
-impl traits::core::Handler for AsyncClient {
-    type Id = HandlerId;
-    const ID: HandlerId = HandlerId::AsyncClient;
-    type Config = config::Config;
-    fn new<W: traits::core::Writer>(config: &Self::Config, _: &W) -> Self {
+impl AsyncClient {
+    pub fn new<W: traits::core::Writer>(config: &config::Config, _: &W) -> Self {
         std::thread::sleep(std::time::Duration::from_millis(1)); // wait for server to start
 
         AsyncClient {
@@ -57,6 +56,11 @@ impl traits::core::Handler for AsyncClient {
             addr: config.addr.clone(),
         }
     }
+}
+
+impl traits::core::Handler for AsyncClient {
+    type Id = HandlerId;
+    const ID: HandlerId = HandlerId::AsyncClient;
 }
 
 impl traits::core::Handle<messages::Request> for AsyncClient {
@@ -115,11 +119,8 @@ pub struct AsyncServer {
     >,
 }
 
-impl traits::core::Handler for AsyncServer {
-    type Id = HandlerId;
-    const ID: HandlerId = HandlerId::AsyncServer;
-    type Config = config::Config;
-    fn new<W: traits::core::Writer>(config: &Self::Config, writer: &W) -> Self {
+impl AsyncServer {
+    pub fn new<W: traits::core::Writer>(config: &config::Config, writer: &W) -> Self {
         let response_map =
             std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
 
@@ -134,6 +135,11 @@ impl traits::core::Handler for AsyncServer {
             response_channel: response_map,
         }
     }
+}
+
+impl traits::core::Handler for AsyncServer {
+    type Id = HandlerId;
+    const ID: HandlerId = HandlerId::AsyncServer;
 }
 
 impl traits::core::Handle<messages::IdWrapper<messages::Response>> for AsyncServer {
@@ -247,13 +253,15 @@ impl AsyncServer {
 
 pub struct SyncRequestHandler {}
 
+impl SyncRequestHandler {
+    pub fn new<W: traits::core::Writer>(_config: &config::Config, _writer: &W) -> Self {
+        SyncRequestHandler {}
+    }
+}
+
 impl traits::core::Handler for SyncRequestHandler {
     type Id = HandlerId;
     const ID: Self::Id = HandlerId::SyncResponseHandler;
-    type Config = config::Config;
-    fn new<W: traits::core::Writer>(_config: &Self::Config, _writer: &W) -> Self {
-        SyncRequestHandler {}
-    }
 }
 
 impl traits::core::Handle<messages::IdWrapper<messages::Request>> for SyncRequestHandler {

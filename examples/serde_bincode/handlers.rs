@@ -14,14 +14,16 @@ rust_messenger::messenger_id_enum! {
 
 pub struct HandlerA {}
 
-impl traits::core::Handler for HandlerA {
-    type Id = HandlerId;
-    const ID: HandlerId = HandlerId::HandlerA;
-    type Config = config::Config;
-    fn new<W: traits::core::Writer>(config: &Self::Config, _: &W) -> Self {
+impl HandlerA {
+    pub fn new<W: traits::core::Writer>(config: &config::Config, _: &W) -> Self {
         println!("HandlerA new called with config value \"{}\"", config.value);
         HandlerA {}
     }
+}
+
+impl traits::core::Handler for HandlerA {
+    type Id = HandlerId;
+    const ID: HandlerId = HandlerId::HandlerA;
 
     fn on_start<W: traits::core::Writer>(&mut self, writer: &W) {
         println!("HandlerA on_start called");
@@ -45,13 +47,15 @@ impl traits::core::Handle<messages::MessageA> for HandlerA {
 
 pub struct HandlerB {}
 
+impl HandlerB {
+    pub fn new<W: traits::core::Writer>(_: &config::Config, _: &W) -> Self {
+        HandlerB {}
+    }
+}
+
 impl traits::core::Handler for HandlerB {
     type Id = HandlerId;
     const ID: HandlerId = HandlerId::HandlerB;
-    type Config = config::Config;
-    fn new<W: traits::core::Writer>(_: &Self::Config, _: &W) -> Self {
-        HandlerB {}
-    }
 }
 
 impl traits::core::Handle<messages::MessageB> for HandlerB {
@@ -72,13 +76,15 @@ impl traits::core::Handle<messages::MessageB> for HandlerB {
 
 pub struct HandlerC {}
 
+impl HandlerC {
+    pub fn new<W: traits::core::Writer>(_: &config::Config, _: &W) -> Self {
+        HandlerC {}
+    }
+}
+
 impl traits::core::Handler for HandlerC {
     type Id = HandlerId;
     const ID: HandlerId = HandlerId::HandlerC;
-    type Config = config::Config;
-    fn new<W: traits::core::Writer>(_: &Self::Config, _: &W) -> Self {
-        HandlerC {}
-    }
 }
 
 impl traits::core::Handle<messages::MessageA> for HandlerC {

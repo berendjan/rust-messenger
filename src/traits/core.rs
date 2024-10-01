@@ -3,8 +3,6 @@ use crate::messenger;
 pub trait Handler {
     type Id: Into<u16>;
     const ID: Self::Id;
-    type Config;
-    fn new<W: Writer>(config: &Self::Config, writer: &W) -> Self;
     fn on_start<W: Writer>(&mut self, _writer: &W) {}
     fn on_loop<W: Writer>(&mut self, _writer: &W) {}
     fn on_stop(&mut self) {}
