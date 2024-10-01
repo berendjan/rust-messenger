@@ -2,20 +2,26 @@ use rust_messenger::traits;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct Request {
-    pub request_id: Option<usize>,
     pub val: u8,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct Response {
-    pub request_id: usize,
-    pub other_val: u16,
+    pub response_val: u16,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+pub struct IdWrapper<M> {
+    pub id: usize,
+    pub val: M,
 }
 
 rust_messenger::messenger_id_enum!(
     MessageId {
         Request = 0,
         Response = 1,
+        RequestWithId = 2,
+        ResponseWithId = 3,
     }
 );
 
@@ -46,3 +52,5 @@ macro_rules! impl_message_traits {
 
 impl_message_traits!(Request, MessageId::Request);
 impl_message_traits!(Response, MessageId::Response);
+impl_message_traits!(IdWrapper<Request>, MessageId::RequestWithId);
+impl_message_traits!(IdWrapper<Response>, MessageId::ResponseWithId);

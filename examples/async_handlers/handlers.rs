@@ -9,54 +9,101 @@ use tokio::io::AsyncWriteExt;
 
 rust_messenger::messenger_id_enum! {
     HandlerId {
-        SyncHandler = 1,
-        AsyncServer = 2,
-        AsyncClient = 3,
-    }
+        SyncApp = 1,
+        AsyncClient = 2,
+        AsyncServer = 3,
+        SyncResponseHandler = 4,
+}
 }
 
-pub struct SyncHandler {}
+pub struct SyncApp {}
 
-impl traits::core::Handler for SyncHandler {
+impl traits::core::Handler for SyncApp {
     type Id = HandlerId;
-    const ID: HandlerId = HandlerId::SyncHandler;
+    const ID: HandlerId = HandlerId::SyncApp;
     type Config = config::Config;
     fn new<W: traits::core::Writer>(config: &Self::Config, _: &W) -> Self {
-        println!(
-            "SyncHandler new called with config value \"{}\"",
-            config.value
-        );
-        SyncHandler {}
+        println!("SyncApp new called with config value \"{}\"", config.value);
+        SyncApp {}
     }
 
     fn on_start<W: traits::core::Writer>(&mut self, writer: &W) {
-        println!("SyncHandler on_start called");
+        println!("SyncApp on_start called");
 
-        Self::send(
-            &messages::Request {
-                request_id: None,
-                val: 0,
-            },
-            writer,
-        );
+        Self::send(&messages::Request { val: 0 }, writer);
     }
 }
 
-impl traits::core::Handle<messages::Request> for SyncHandler {
-    fn handle<W: traits::core::Writer>(&mut self, message: &messages::Request, writer: &W) {
-        println!("received messages::Request at SyncHandler: {message:?}");
-
-        let response = messages::Response {
-            request_id: message.request_id.unwrap(),
-            other_val: message.val as u16 + 1,
-        };
-        Self::send(&response, writer);
-    }
-}
-
-impl traits::core::Handle<messages::Response> for SyncHandler {
+impl traits::core::Handle<messages::Response> for SyncApp {
     fn handle<W: traits::core::Writer>(&mut self, message: &messages::Response, _writer: &W) {
-        println!("received messages::Response at SyncHandler: {message:?}");
+        println!("received messages::Response at SyncApp: {message:?}");
+    }
+}
+
+pub struct AsyncClient {
+    runtime: std::sync::Arc<tokio::runtime::Runtime>,
+    addr: String,
+}
+
+impl traits::core::Handler for AsyncClient {
+    type Id = HandlerId;
+    const ID: HandlerId = HandlerId::AsyncClient;
+    type Config = config::Config;
+    fn new<W: traits::core::Writer>(config: &Self::Config, _: &W) -> Self {
+        std::thread::sleep(std::time::Duration::from_millis(1)); // wait for server to start
+
+        AsyncClient {
+            runtime: config.runtime.clone(),
+            addr: config.addr.clone(),
+        }
+    }
+}
+
+impl traits::core::Handle<messages::Request> for AsyncClient {
+    fn handle<W: traits::core::Writer>(&mut self, message: &messages::Request, writer: &W) {
+        println!("received messages::Request at AsyncClient: {message:?}");
+
+        let msg = message.clone();
+        let addr = self.addr.clone();
+        let wrt = (*writer).clone();
+
+        self.runtime.spawn(async move {
+            let mut socket = tokio::net::TcpStream::connect(addr.clone())
+                .await
+                .expect("opening connect failed");
+
+            let msg_buf = bincode::serialize(&msg).expect("Serializing message in client failed");
+            socket
+                .write_all(&msg_buf)
+                .await
+                .expect("Writing data in client socket failed");
+
+            println!("AsyncClient send message {msg:?} to {addr}");
+
+            let mut buf = vec![0u8; 1024];
+
+            match socket.read(&mut buf).await {
+                Ok(0) => (),
+                Ok(n) => {
+                    // you could skip the extra parsing & serializing
+                    // wrt.write::<messages::Response, AsyncClient, _>(n, |buf2| {
+                    //     buf2.copy_from_slice(&buf[..n])
+                    // });
+
+                    // parse incoming response
+                    let incoming_response = messages::Response::deserialize_from(&buf[..n]);
+
+                    println!("received messages::Response at AsyncClient {incoming_response:?} from {addr}");
+
+                    // send response to message bus
+                    Self::send(&incoming_response, &wrt);
+                }
+                Err(_) => {
+                    // Unexpected socket error. There isn't much we can do
+                    // here so just stop processing.
+                }
+            }
+        });
     }
 }
 
@@ -89,15 +136,15 @@ impl traits::core::Handler for AsyncServer {
     }
 }
 
-impl traits::core::Handle<messages::Response> for AsyncServer {
-    fn handle<W: traits::core::Writer>(&mut self, message: &messages::Response, _writer: &W) {
+impl traits::core::Handle<messages::IdWrapper<messages::Response>> for AsyncServer {
+    fn handle<W: traits::core::Writer>(
+        &mut self,
+        message: &messages::IdWrapper<messages::Response>,
+        _writer: &W,
+    ) {
         println!("received messages::Response at AsyncServer: {message:?}");
-        if let Some(tx) = self
-            .response_channel
-            .blocking_lock()
-            .remove(&message.request_id)
-        {
-            tx.send((*message).clone())
+        if let Some(tx) = self.response_channel.blocking_lock().remove(&message.id) {
+            tx.send(message.val.clone())
                 .expect("One shot received was closed...");
         }
     }
@@ -153,11 +200,10 @@ impl AsyncServer {
             match socket.read(&mut buf).await {
                 Ok(0) => return,
                 Ok(n) => {
-                    let mut incoming_request = messages::Request::deserialize_from(&buf[..n]);
+                    let incoming_request = messages::Request::deserialize_from(&buf[..n]);
 
                     let request_id =
                         request_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    incoming_request.request_id = Some(request_id);
 
                     let (tx, rx) = tokio::sync::oneshot::channel();
                     // insert sender for sync handler
@@ -166,7 +212,11 @@ impl AsyncServer {
                     println!("received messages::Request at AsyncServer: {incoming_request:?}");
 
                     // send request to message bus
-                    Self::send(&incoming_request, &writer);
+                    let request = messages::IdWrapper::<messages::Request> {
+                        id: request_id,
+                        val: incoming_request,
+                    };
+                    Self::send(&request, &writer);
 
                     // wait for response from sync handler
                     let response = rx.await.expect("The sender dropped!");
@@ -195,68 +245,31 @@ impl AsyncServer {
     }
 }
 
-pub struct AsyncClient {
-    runtime: std::sync::Arc<tokio::runtime::Runtime>,
-    addr: String,
-}
+pub struct SyncRequestHandler {}
 
-impl traits::core::Handler for AsyncClient {
+impl traits::core::Handler for SyncRequestHandler {
     type Id = HandlerId;
-    const ID: HandlerId = HandlerId::AsyncClient;
+    const ID: Self::Id = HandlerId::SyncResponseHandler;
     type Config = config::Config;
-    fn new<W: traits::core::Writer>(config: &Self::Config, _: &W) -> Self {
-        AsyncClient {
-            runtime: config.runtime.clone(),
-            addr: config.addr.clone(),
-        }
+    fn new<W: traits::core::Writer>(_config: &Self::Config, _writer: &W) -> Self {
+        SyncRequestHandler {}
     }
 }
 
-impl traits::core::Handle<messages::Request> for AsyncClient {
-    fn handle<W: traits::core::Writer>(&mut self, message: &messages::Request, writer: &W) {
-        println!("received messages::Request at AsyncClient: {message:?}");
+impl traits::core::Handle<messages::IdWrapper<messages::Request>> for SyncRequestHandler {
+    fn handle<W: traits::core::Writer>(
+        &mut self,
+        message: &messages::IdWrapper<messages::Request>,
+        writer: &W,
+    ) {
+        println!("received messages::Request at SyncRequestHandler: {message:?}");
 
-        let msg = message.clone();
-        let addr = self.addr.clone();
-        let wrt = (*writer).clone();
-
-        self.runtime.spawn(async move {
-            let mut socket = tokio::net::TcpStream::connect(addr.clone())
-                .await
-                .expect("opening connect failed");
-
-            let msg_buf = bincode::serialize(&msg).expect("Serializing message in client failed");
-            socket
-                .write_all(&msg_buf)
-                .await
-                .expect("Writing data in client socket failed");
-
-            println!("AsyncClient send message {msg:?} to {addr}");
-
-            let mut buf = vec![0u8; 1024];
-
-            match socket.read(&mut buf).await {
-                Ok(0) => return,
-                Ok(n) => {
-                    // you could skip the extra parsing & serializing
-                    // wrt.write::<messages::Response, AsyncClient, _>(n, |buf2| {
-                    //     buf2.copy_from_slice(&buf[..n])
-                    // });
-
-                    // parse incoming response
-                    let incoming_response = messages::Response::deserialize_from(&buf[..n]);
-                    
-                    println!("received messages::Response at AsyncClient {incoming_response:?} from {addr}");
-
-                    // send response to message bus
-                    Self::send(&incoming_response, &wrt);
-                }
-                Err(_) => {
-                    // Unexpected socket error. There isn't much we can do
-                    // here so just stop processing.
-                    return;
-                }
-            }
-        });
+        let response = messages::IdWrapper::<messages::Response> {
+            id: message.id,
+            val: messages::Response {
+                response_val: (message.val.val + 1) as u16,
+            },
+        };
+        Self::send(&response, writer);
     }
 }

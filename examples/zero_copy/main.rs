@@ -2,7 +2,9 @@ mod config;
 mod handlers;
 mod messages;
 
+// (!) This use statement is required.
 use rust_messenger::traits::zero_copy::CastFrom;
+
 rust_messenger::Messenger! {
     config::Config,
     WorkerA:
