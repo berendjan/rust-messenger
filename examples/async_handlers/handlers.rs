@@ -67,11 +67,11 @@ impl traits::core::Handle<messages::Request> for AsyncClient {
         println!("received messages::Request at AsyncClient: {message:?}");
 
         let msg = message.clone();
+        let wrt = writer.clone();
         let addr = self.addr.clone();
-        let wrt = (*writer).clone();
 
         self.runtime.spawn(async move {
-            let mut socket = tokio::net::TcpStream::connect(addr.clone())
+            let mut socket = tokio::net::TcpStream::connect(&addr)
                 .await
                 .expect("opening connect failed");
 
@@ -125,7 +125,7 @@ impl AsyncServer {
 
         config.runtime.spawn(AsyncServer::serve(
             config.addr.clone(),
-            (*writer).clone(),
+            writer.clone(),
             response_map.clone(),
             config.runtime.clone(),
         ));
@@ -167,7 +167,7 @@ impl AsyncServer {
         runtime: std::sync::Arc<tokio::runtime::Runtime>,
     ) {
         // Setup async TCP server
-        let listener = tokio::net::TcpListener::bind(addr.clone())
+        let listener = tokio::net::TcpListener::bind(&addr)
             .await
             .expect("Error binding server");
 
