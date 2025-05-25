@@ -75,7 +75,7 @@ impl traits::core::Handle<messages::Request> for AsyncClient {
                 .await
                 .expect("opening connect failed");
 
-            let msg_buf = bincode::serialize(&msg).expect("Serializing message in client failed");
+            let msg_buf = bincode::serde::encode_to_vec(&msg, bincode::config::standard()).expect("Serializing message in client failed");
             socket
                 .write_all(&msg_buf)
                 .await
@@ -228,7 +228,8 @@ impl AsyncServer {
 
                     // Serialize response
                     let resp_buff =
-                        bincode::serialize(&response).expect("Serializing of response failed");
+                        bincode::serde::encode_to_vec(&response, bincode::config::standard())
+                            .expect("Serializing of response failed");
 
                     println!("Sending response back to client");
 

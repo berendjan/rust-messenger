@@ -153,7 +153,7 @@ mod tests {
 
     impl super::Config for Config {
         fn get_buffer_size(&self) -> usize {
-            4096
+            16384
         }
     }
 

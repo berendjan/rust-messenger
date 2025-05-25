@@ -34,17 +34,22 @@ macro_rules! impl_message_traits {
 
         impl $type {
             pub fn deserialize_from(buffer: &[u8]) -> Self {
-                bincode::deserialize(buffer).unwrap()
+                bincode::serde::borrow_decode_from_slice(buffer, bincode::config::standard())
+                    .unwrap()
+                    .0
             }
         }
 
         impl traits::extended::ExtendedMessage for $type {
             fn get_size(&self) -> usize {
-                bincode::serialized_size(self).unwrap() as usize
+                bincode::serde::encode_to_vec(self, bincode::config::standard())
+                    .unwrap()
+                    .len()
             }
 
             fn write_into(&self, buffer: &mut [u8]) {
-                bincode::serialize_into(buffer, self).unwrap();
+                bincode::serde::encode_into_slice(self, buffer, bincode::config::standard())
+                    .unwrap();
             }
         }
     };

@@ -52,7 +52,7 @@ mod tests {
 
     use super::*;
 
-    const BUFFER_SIZE: usize = 4096;
+    const BUFFER_SIZE: usize = 16384;
     const ELEMENT_SIZE: usize = 2;
 
     #[test]
