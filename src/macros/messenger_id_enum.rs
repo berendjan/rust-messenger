@@ -90,8 +90,9 @@ mod tests {
             }
         );
 
-        let mut data: [u8; 2] = [0; 2];
-        let enm_ptr = data.as_mut_ptr() as *mut TestEnum;
+        // u16 storage so the cast pointer satisfies the enum's alignment
+        let mut data: u16 = 0;
+        let enm_ptr = &mut data as *mut u16 as *mut TestEnum;
         unsafe {
             // let enm = &mut *enm_ptr; // casting to wrong enum value is UB
             *enm_ptr = TestEnum::VariantA;
