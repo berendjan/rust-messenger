@@ -18,11 +18,16 @@ pub trait Message {
 }
 
 pub trait Reader {
-    fn read<'a>(&self, position: usize) -> Option<(&'a messenger::Header, &'a [u8])>;
+    /// Returns the header and payload of the message written at `position`,
+    /// or `None` if no valid message exists there. The references borrow the
+    /// bus and cannot outlive it.
+    fn read(&self, position: usize) -> Option<(&messenger::Header, &[u8])>;
 }
 
 pub trait Writer: Sync + Send + Clone + 'static {
-    fn write<'a, M: Message, H: Handler, F: FnOnce(&'a mut [u8])>(&self, size: usize, callback: F);
+    /// Reserves `size` bytes (rounded up to alignment) and passes the payload
+    /// buffer to `callback`. The buffer is only valid inside the callback.
+    fn write<M: Message, H: Handler, F: FnOnce(&mut [u8])>(&self, size: usize, callback: F);
 }
 
 pub trait MessageBus: Reader + Writer {

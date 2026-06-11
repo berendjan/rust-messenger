@@ -9,10 +9,14 @@ macro_rules! messenger_id_enum {
         }
 
         impl $name {
+            /// Converts from a raw id.
+            ///
+            /// Panics on unknown ids; use `TryFrom<u16>` for ids that come
+            /// from untrusted input such as the message bus.
             pub const fn from_u16(value: u16) -> Self {
                 match value {
                     $( $value => $name::$variant, )+
-                    _ => panic!(),
+                    _ => panic!("unknown messenger id"),
                 }
             }
 
@@ -28,9 +32,16 @@ macro_rules! messenger_id_enum {
             }
         }
 
-        impl From<u16> for $name {
-            fn from(value: u16) -> Self {
-                $name::from_u16(value)
+        impl std::convert::TryFrom<u16> for $name {
+            type Error = u16;
+
+            /// Fallible conversion for ids from untrusted input;
+            /// returns the unknown id as the error.
+            fn try_from(value: u16) -> Result<Self, u16> {
+                match value {
+                    $( $value => Ok($name::$variant), )+
+                    unknown => Err(unknown),
+                }
             }
         }
     };
@@ -55,6 +66,19 @@ mod tests {
         assert_eq!(1, X);
         const U16: u16 = 1;
         assert_eq!(TestEnum::from_u16(U16), TestEnum::VariantA);
+    }
+
+    #[test]
+    fn test_try_from_unknown_id_is_err() {
+        messenger_id_enum!(
+            TestEnum {
+                VariantA = 1,
+                VariantB = 2,
+            }
+        );
+
+        assert_eq!(TestEnum::try_from(1), Ok(TestEnum::VariantA));
+        assert_eq!(TestEnum::try_from(999), Err(999));
     }
 
     #[test]

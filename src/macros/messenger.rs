@@ -144,13 +144,17 @@
 /// impl traits::core::Router for WorkerA {
 ///     #[inline]
 ///     fn route<'a, W: traits::core::Writer>(&mut self, header: &rust_messenger::Header, buffer: &'a [u8], writer: &W) {
-///         match (header.source.into(), header.message_id.into()) {
-///             (handlers::HandlerB::ID, messages::MessageA::ID) => {
+///         match (header.source, header.message_id) {
+///             (source, message_id)
+///                 if source == handlers::HandlerB::ID.into()
+///                     && message_id == messages::MessageA::ID.into() => {
 ///                 let message = <messages::MessageA>::deserialize_from(&buffer);
 ///                 self.handler_a.handle(&message, writer);
 ///             }
 ///
-///             (handlers::HandlerA::ID, messages::MessageB::ID) => {
+///             (source, message_id)
+///                 if source == handlers::HandlerA::ID.into()
+///                     && message_id == messages::MessageB::ID.into() => {
 ///                 let message = <messages::MessageB>::deserialize_from(&buffer);
 ///                 self.handler_b.handle(&message, writer);
 ///             }
@@ -162,8 +166,10 @@
 /// impl traits::core::Router for WorkerB {
 ///     #[inline]
 ///     fn route<'a, W: traits::core::Writer>(&mut self, header: &rust_messenger::Header, buffer: &'a [u8], writer: &W) {
-///         match (header.source.into(), header.message_id.into()) {
-///             (handlers::HandlerB::ID, messages::MessageA::ID) => {
+///         match (header.source, header.message_id) {
+///             (source, message_id)
+///                 if source == handlers::HandlerB::ID.into()
+///                     && message_id == messages::MessageA::ID.into() => {
 ///                 let message = <messages::MessageA>::deserialize_from(&buffer);
 ///                 self.handler_c.handle(&message, writer);
 ///             }
@@ -277,9 +283,13 @@ macro_rules! Messenger {
             impl traits::core::Router for $worker {
                 #[inline]
                 fn route<'a, W: traits::core::Writer>(&mut self, header: &messenger::Header, buffer: &'a [u8], writer: &W) {
-                    match (header.source.into(), header.message_id.into()) {
+                    // Compare raw u16 ids: headers come from the bus, and an
+                    // unknown id must fall through, not panic in a conversion.
+                    match (header.source, header.message_id) {
                         $(
-                            (<$source>::ID, <$message>::ID) => {
+                            (source, message_id)
+                                if source == <$source>::ID.into()
+                                    && message_id == <$message>::ID.into() => {
                                 let message = <$message>::deserialize_from(buffer);
                                 $(
                                     self.$receiver.handle(&message, writer);

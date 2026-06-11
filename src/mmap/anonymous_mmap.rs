@@ -1,20 +1,34 @@
-#[derive(Clone)]
+/// An anonymous memory mapping.
+///
+/// Deliberately not `Clone`: the struct owns the mapping and unmaps it on
+/// drop, so a second handle would leave the first one dangling. Share it
+/// through an `Arc` instead.
 pub struct AnonymousMmap {
     ptr: *mut libc::c_void,
     len: usize,
 }
 
+// SAFETY: AnonymousMmap is a unique owner of its mapping; the raw pointer is
+// only an address, and all synchronization of the memory behind it is the
+// responsibility of the (atomic-based) users of `get_ptr`.
 unsafe impl Sync for AnonymousMmap {}
 unsafe impl Send for AnonymousMmap {}
 
 impl AnonymousMmap {
     pub fn new(len: usize) -> Result<Self, std::io::Error> {
-        assert_eq!(len & (len - 1), 0, "len must be a power of 2");
         let page_size = unsafe { libc::sysconf(libc::_SC_PAGE_SIZE) } as usize;
-        assert!(
-            len >= page_size,
-            "len must at least page size: {len} >= {page_size}"
-        );
+        if len == 0 || len & (len - 1) != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("len must be a power of 2, got {len}"),
+            ));
+        }
+        if len < page_size {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("len must be at least the page size: {len} < {page_size}"),
+            ));
+        }
 
         let ptr = unsafe {
             libc::mmap(
@@ -60,6 +74,25 @@ mod tests {
         let mmap = AnonymousMmap::new(BUFFER_SIZE).unwrap();
         assert_eq!(mmap.len, BUFFER_SIZE);
     }
+
+    #[test]
+    fn test_new_zero_len_is_err() {
+        assert!(AnonymousMmap::new(0).is_err());
+    }
+
+    #[test]
+    fn test_new_non_power_of_two_is_err() {
+        assert!(AnonymousMmap::new(12_000).is_err());
+    }
+
+    #[test]
+    fn test_new_smaller_than_page_is_err() {
+        assert!(AnonymousMmap::new(8).is_err());
+    }
+
+    // Cloning would duplicate the owning pointer and munmap the region twice
+    // (use-after-free for the surviving handle).
+    static_assertions::assert_not_impl_any!(AnonymousMmap: Clone);
 
     #[derive(Clone)]
     struct TestMessageBus {

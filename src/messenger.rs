@@ -5,7 +5,11 @@ pub struct Header {
     pub size: u16,
 }
 pub const HEADER_SIZE: usize = std::mem::size_of::<Header>();
-pub const ALIGNED_HEADER_SIZE: usize = align_to_usize(HEADER_SIZE);
+/// Size of the per-message slot prefix: the aligned [`Header`] followed by an
+/// internal validity stamp maintained by the bus implementations. The message
+/// payload starts at this offset within a slot.
+pub const ALIGNED_HEADER_SIZE: usize =
+    align_to_usize(HEADER_SIZE) + std::mem::size_of::<u64>();
 
 /// Aligns to register size of current architecture
 pub const fn align_to_usize(from: usize) -> usize {

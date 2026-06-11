@@ -1,11 +1,11 @@
 use rust_messenger::traits;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct MessageA {
     pub val: u8,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct MessageB {
     pub other_val: u16,
 }
@@ -29,7 +29,12 @@ macro_rules! impl_message_traits {
             where
                 Self: traits::zero_copy::ZeroCopyMessage,
             {
+                assert!(
+                    buffer.len() >= std::mem::size_of::<Self>(),
+                    "buffer too small for message"
+                );
                 let ptr = buffer.as_ptr() as *const Self;
+                assert!(ptr.is_aligned(), "buffer misaligned for message");
                 unsafe { &*ptr }
             }
         }
