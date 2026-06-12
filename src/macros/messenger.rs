@@ -285,11 +285,15 @@ macro_rules! Messenger {
                 fn route<'a, W: traits::core::Writer>(&mut self, header: &messenger::Header, buffer: &'a [u8], writer: &W) {
                     // Compare raw u16 ids: headers come from the bus, and an
                     // unknown id must fall through, not panic in a conversion.
+                    // The conversions spell out `Into::<u16>` because bare
+                    // `.into()` is ambiguous as soon as the downstream crate
+                    // graph adds more `PartialEq<_> for u16` impls (e.g.
+                    // serde_json, tiny_http) — see tests/macro_hygiene.rs.
                     match (header.source, header.message_id) {
                         $(
                             (source, message_id)
-                                if source == <$source>::ID.into()
-                                    && message_id == <$message>::ID.into() => {
+                                if source == Into::<u16>::into(<$source>::ID)
+                                    && message_id == Into::<u16>::into(<$message>::ID) => {
                                 let message = <$message>::deserialize_from(buffer);
                                 $(
                                     self.$receiver.handle(&message, writer);
