@@ -53,13 +53,31 @@ pub fn main() {
         runtime,
         addr: "127.0.0.1:12121".to_string(),
     };
-    let messenger =
-        Messenger::new(rust_messenger::message_bus::atomic_circular_bus::CircularBus::new(&config));
+    let bus = rust_messenger::message_bus::atomic_circular_bus::CircularBus::new(&config);
+    let messenger = Messenger::new(bus.clone());
     let handles = messenger.run(&config);
 
-    println!("Messenger started, sleeping for 5 milliseconds");
-    std::thread::sleep(std::time::Duration::from_millis(5));
+    // Instead of guessing a sleep duration, watch the bus until the Response
+    // makes it all the way back from the TCP round trip (AsyncClient is the
+    // last hop before SyncApp).
+    use rust_messenger::traits::core::Reader;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut position = 0;
+    'wait: while std::time::Instant::now() < deadline {
+        while let Some((header, _)) = bus.read(position) {
+            position += rust_messenger::messenger::ALIGNED_HEADER_SIZE + header.size as usize;
+            if header.source == u16::from(handlers::HandlerId::AsyncClient)
+                && header.message_id == u16::from(messages::MessageId::Response)
+            {
+                break 'wait;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
 
+    // Brief grace period so WorkerA routes the response to SyncApp before
+    // the stop flag ends the worker loops.
+    std::thread::sleep(std::time::Duration::from_millis(10));
     messenger.stop();
     handles.join();
 }
