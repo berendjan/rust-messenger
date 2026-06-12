@@ -1,10 +1,16 @@
+use std::ffi::c_void;
+
 /// An anonymous memory mapping.
+///
+/// Backed by `mmap(MAP_ANON | MAP_PRIVATE)` on Unix and
+/// `VirtualAlloc(MEM_RESERVE | MEM_COMMIT)` on Windows; both hand back
+/// page-aligned, zero-initialized, read-write memory.
 ///
 /// Deliberately not `Clone`: the struct owns the mapping and unmaps it on
 /// drop, so a second handle would leave the first one dangling. Share it
 /// through an `Arc` instead.
 pub struct AnonymousMmap {
-    ptr: *mut libc::c_void,
+    ptr: *mut c_void,
     len: usize,
 }
 
@@ -16,7 +22,7 @@ unsafe impl Send for AnonymousMmap {}
 
 impl AnonymousMmap {
     pub fn new(len: usize) -> Result<Self, std::io::Error> {
-        let page_size = unsafe { libc::sysconf(libc::_SC_PAGE_SIZE) } as usize;
+        let page_size = platform::page_size();
         if len == 0 || len & (len - 1) != 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -30,6 +36,30 @@ impl AnonymousMmap {
             ));
         }
 
+        let ptr = platform::map_anonymous(len)?;
+        Ok(Self { ptr, len })
+    }
+
+    pub fn get_ptr(&self) -> *mut c_void {
+        self.ptr
+    }
+}
+
+impl Drop for AnonymousMmap {
+    fn drop(&mut self) {
+        unsafe { platform::unmap(self.ptr, self.len) }
+    }
+}
+
+#[cfg(unix)]
+mod platform {
+    use std::ffi::c_void;
+
+    pub fn page_size() -> usize {
+        unsafe { libc::sysconf(libc::_SC_PAGE_SIZE) as usize }
+    }
+
+    pub fn map_anonymous(len: usize) -> Result<*mut c_void, std::io::Error> {
         let ptr = unsafe {
             libc::mmap(
                 std::ptr::null_mut(),
@@ -44,19 +74,48 @@ impl AnonymousMmap {
         if ptr == libc::MAP_FAILED {
             return Err(std::io::Error::last_os_error());
         }
-
-        Ok(Self { ptr, len })
+        Ok(ptr)
     }
 
-    pub fn get_ptr(&self) -> *mut libc::c_void {
-        self.ptr
+    /// SAFETY: `ptr`/`len` must come from a successful `map_anonymous` call,
+    /// and the mapping must not be used afterwards.
+    pub unsafe fn unmap(ptr: *mut c_void, len: usize) {
+        unsafe {
+            libc::munmap(ptr, len);
+        }
     }
 }
 
-impl Drop for AnonymousMmap {
-    fn drop(&mut self) {
+#[cfg(windows)]
+mod platform {
+    use std::ffi::c_void;
+    use windows_sys::Win32::System::Memory::{
+        MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_READWRITE, VirtualAlloc, VirtualFree,
+    };
+    use windows_sys::Win32::System::SystemInformation::{GetSystemInfo, SYSTEM_INFO};
+
+    pub fn page_size() -> usize {
+        let mut info: SYSTEM_INFO = unsafe { std::mem::zeroed() };
+        unsafe { GetSystemInfo(&mut info) };
+        info.dwPageSize as usize
+    }
+
+    pub fn map_anonymous(len: usize) -> Result<*mut c_void, std::io::Error> {
+        let ptr =
+            unsafe { VirtualAlloc(std::ptr::null(), len, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE) };
+
+        if ptr.is_null() {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(ptr)
+    }
+
+    /// SAFETY: `ptr` must come from a successful `map_anonymous` call, and
+    /// the mapping must not be used afterwards.
+    pub unsafe fn unmap(ptr: *mut c_void, _len: usize) {
+        // MEM_RELEASE frees the whole allocation and requires a size of 0.
         unsafe {
-            libc::munmap(self.ptr, self.len);
+            VirtualFree(ptr, 0, MEM_RELEASE);
         }
     }
 }
@@ -90,7 +149,7 @@ mod tests {
         assert!(AnonymousMmap::new(8).is_err());
     }
 
-    // Cloning would duplicate the owning pointer and munmap the region twice
+    // Cloning would duplicate the owning pointer and unmap the region twice
     // (use-after-free for the surviving handle).
     static_assertions::assert_not_impl_any!(AnonymousMmap: Clone);
 
@@ -152,11 +211,7 @@ mod tests {
             let ptr = unsafe { ptr.add(wrapped_position) };
 
             unsafe {
-                libc::memcpy(
-                    ptr as *mut libc::c_void,
-                    data.as_ptr() as *const libc::c_void,
-                    data.len(),
-                );
+                std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
             }
 
             let new_read_head = position + data.len();

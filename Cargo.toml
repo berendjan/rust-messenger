@@ -8,7 +8,15 @@ edition = "2024"
 [features]
 
 [dependencies]
+
+[target.'cfg(unix)'.dependencies]
 libc = "0.2.172"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.60", features = [
+    "Win32_System_Memory",
+    "Win32_System_SystemInformation",
+] }
 
 [dev-dependencies]
 static_assertions = "1.1"
