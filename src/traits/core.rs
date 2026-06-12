@@ -21,12 +21,20 @@ pub trait Reader {
     /// Returns the header and payload of the message written at `position`,
     /// or `None` if no valid message exists there. The references borrow the
     /// bus and cannot outlive it.
+    ///
+    /// Implementations with bounded storage may panic if the reader has
+    /// fallen so far behind that the message at `position` was overwritten.
     fn read(&self, position: usize) -> Option<(&messenger::Header, &[u8])>;
 }
 
 pub trait Writer: Sync + Send + Clone + 'static {
     /// Reserves `size` bytes (rounded up to alignment) and passes the payload
     /// buffer to `callback`. The buffer is only valid inside the callback.
+    ///
+    /// The first `size` bytes of the buffer are NOT pre-zeroed; the callback
+    /// must write every byte it wants readers to see, or stale bytes from
+    /// earlier messages may show through (alignment tail bytes beyond `size`
+    /// are zeroed by the bus).
     fn write<M: Message, H: Handler, F: FnOnce(&mut [u8])>(&self, size: usize, callback: F);
 }
 

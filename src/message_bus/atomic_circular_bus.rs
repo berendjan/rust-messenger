@@ -7,19 +7,32 @@ use crate::traits;
 /// This implementation returns immediately when there is no new message to read.
 /// The writer and the reader are lock-free.
 ///
-/// Each message slot is stamped with the absolute position it was written at.
-/// `read` validates the stamp, so positions that do not point at the start of
-/// a live message (mid-message offsets, or slots already overwritten by a
-/// newer lap of the ring) return `None` instead of garbage.
+/// Publication is per slot: each slot's prefix carries a commit stamp that
+/// the writer sets (to `position + 1`) as its final step. `read` returns a
+/// message only when the stamp matches the requested position, so writers
+/// commit fully independently — a slow writer never delays other writers,
+/// and positions that do not point at the start of a committed message
+/// (mid-message offsets, in-flight slots) return `None` instead of garbage.
+///
+/// A write callback that panics leaves its slot uncommitted: other writers
+/// are unaffected, but readers stop at that position (in-order consumers
+/// cannot skip an unpublished slot). If handlers may panic, run with
+/// `panic = "abort"` or keep callbacks trivially infallible.
+///
+/// # Fallen-behind readers panic
+///
+/// Writers never wait for readers. A reader that falls more than half the
+/// buffer behind has had its messages overwritten; `read` detects this and
+/// **panics** ("fell behind") instead of returning torn data or silently
+/// skipping messages. Size the buffer for the worst-case reader lag.
 ///
 /// # Caveats
 ///
-/// * Writers never wait for readers: a reader that falls more than half the
-///   buffer behind permanently reads `None` for its stale position. Size the
-///   buffer for the worst-case reader lag.
-/// * References returned by `read` point into the ring. A writer that laps
-///   the ring while they are still in use will overwrite the referenced
-///   bytes; copy data out if it must remain stable across writes.
+/// * The lap check runs when `read` is called. References returned by `read`
+///   point into the ring, so a writer that laps the ring *while they are
+///   still in use* can overwrite the referenced bytes; the next `read` call
+///   will panic, but data already in use may be torn. Keep handler work
+///   short relative to buffer capacity, or copy data out.
 ///
 /// References returned by `read` cannot outlive the bus:
 ///
@@ -42,52 +55,6 @@ pub struct CircularBus {
     buffer: std::sync::Arc<SharedBuffer>,
 }
 
-/// Offset of the slot validity stamp, between the aligned header and the payload.
-const STAMP_OFFSET: usize = messenger::ALIGNED_HEADER_SIZE - std::mem::size_of::<u64>();
-/// Stamp value marking a slot whose writer has claimed but not yet published it.
-const STAMP_INVALID: u64 = u64::MAX;
-
-/// Views the stamp word of the slot starting at `slot` as an atomic.
-///
-/// SAFETY: caller must ensure `slot` points at a slot with at least
-/// `ALIGNED_HEADER_SIZE` accessible bytes; the stamp word is 8-aligned because
-/// slots start at `align_to_usize` positions within a page-aligned mapping.
-unsafe fn stamp_of<'a>(slot: *const u8) -> &'a std::sync::atomic::AtomicU64 {
-    unsafe { &*(slot.add(STAMP_OFFSET) as *const std::sync::atomic::AtomicU64) }
-}
-
-/// Publishes a message slot on drop, so the bus stays usable even when a
-/// write callback panics: the header is fully written before the callback
-/// runs, so readers at worst observe a zeroed payload.
-struct PublishGuard<'a> {
-    buffer: &'a SharedBuffer,
-    ptr: *mut u8,
-    position: usize,
-    len: usize,
-}
-
-impl Drop for PublishGuard<'_> {
-    fn drop(&mut self) {
-        unsafe { stamp_of(self.ptr) }.store(
-            self.position as u64,
-            std::sync::atomic::Ordering::Release,
-        );
-
-        let new_read_head = self.position + self.len;
-        while self
-            .buffer
-            .read_head
-            .compare_exchange_weak(
-                self.position,
-                new_read_head,
-                std::sync::atomic::Ordering::Release,
-                std::sync::atomic::Ordering::Relaxed,
-            )
-            .is_err()
-        {}
-    }
-}
-
 pub trait Config {
     fn get_buffer_size(&self) -> usize;
 }
@@ -95,8 +62,10 @@ pub trait Config {
 struct SharedBuffer {
     mmap: anonymous_mmap::AnonymousMmap,
     write_head: std::sync::atomic::AtomicUsize,
-    read_head: std::sync::atomic::AtomicUsize,
     wrap_size: usize,
+    /// `wrap_size - 1`; valid because the buffer size is a power of two.
+    /// Lets the hot path wrap positions with `&` instead of a division.
+    wrap_mask: usize,
 }
 
 impl CircularBus {
@@ -104,20 +73,20 @@ impl CircularBus {
         let mmap = anonymous_mmap::AnonymousMmap::new(config.get_buffer_size())
             .expect("invalid bus buffer size");
         let write_head = std::sync::atomic::AtomicUsize::new(0);
-        let read_head = std::sync::atomic::AtomicUsize::new(0);
         let wrap_size = config.get_buffer_size() >> 1;
         Self {
             buffer: std::sync::Arc::new(SharedBuffer {
                 mmap,
                 write_head,
-                read_head,
                 wrap_size,
+                wrap_mask: wrap_size - 1,
             }),
         }
     }
 }
 
 impl traits::core::Writer for CircularBus {
+    #[inline]
     fn write<M: traits::core::Message, H: traits::core::Handler, F: FnOnce(&mut [u8])>(
         &self,
         size: usize,
@@ -135,61 +104,98 @@ impl traits::core::Writer for CircularBus {
             .buffer
             .write_head
             .fetch_add(len, std::sync::atomic::Ordering::Relaxed);
-        let wrapped_pos = position % self.buffer.wrap_size;
+        let wrapped_pos = position & self.buffer.wrap_mask;
 
         let ptr = self.buffer.mmap.get_ptr() as *mut u8;
         let ptr = unsafe { ptr.add(wrapped_pos) };
 
-        // Invalidate the slot before touching it, so readers of an older lap
-        // fail the stamp check instead of observing torn data.
-        unsafe { stamp_of(ptr) }.store(STAMP_INVALID, std::sync::atomic::Ordering::Release);
-
         let hdr_ptr = ptr as *mut messenger::Header;
+        // Field projection through the raw pointer: borrows only the atomic
+        // stamp, so the sibling field writes below do not alias it. Sound on
+        // arbitrary slot bytes because every Header bit pattern is valid.
+        let stamp = unsafe { &(*hdr_ptr).commit_stamp };
+
+        // Un-commit the slot before mutating it, so readers of an older lap
+        // fail the stamp check instead of observing torn data.
+        stamp.store(0, std::sync::atomic::Ordering::Release);
+
         unsafe {
-            std::ptr::write_bytes(ptr, 0, STAMP_OFFSET);
-            std::ptr::write_bytes(ptr.add(messenger::ALIGNED_HEADER_SIZE), 0, aligned_size);
+            // Zero the header padding and the alignment tail beyond `size`;
+            // the callback is responsible for the payload bytes themselves.
+            std::ptr::write_bytes(ptr, 0, std::mem::offset_of!(messenger::Header, commit_stamp));
+            std::ptr::write_bytes(
+                ptr.add(messenger::ALIGNED_HEADER_SIZE + size),
+                0,
+                aligned_size - size,
+            );
             std::ptr::addr_of_mut!((*hdr_ptr).source).write(H::ID.into());
             std::ptr::addr_of_mut!((*hdr_ptr).message_id).write(M::ID.into());
             std::ptr::addr_of_mut!((*hdr_ptr).size).write(aligned_size as u16);
         }
 
-        // Publishes on drop, even if the callback panics.
-        let _publish = PublishGuard {
-            buffer: &self.buffer,
-            ptr,
-            position,
-            len,
-        };
-
         let msg_ptr = unsafe { ptr.add(messenger::ALIGNED_HEADER_SIZE) };
         let buffer = unsafe { std::slice::from_raw_parts_mut(msg_ptr, aligned_size) };
         callback(buffer);
+
+        // Commit: publish this slot to readers. Writers commit independently;
+        // there is no ordering chain between writers. If the callback panicked
+        // above, the slot simply stays uncommitted.
+        stamp.store(
+            messenger::Header::commit_stamp_for(position),
+            std::sync::atomic::Ordering::Release,
+        );
+    }
+}
+
+impl CircularBus {
+    /// Cold path of [`read`](traits::core::Reader::read): the slot is not
+    /// committed for `position`. Decides between "no message yet" (`None`)
+    /// and "reader fell behind" (panic). Only here is the write_head cache
+    /// line touched, keeping reader polling off the line writers contend on.
+    #[cold]
+    fn read_uncommitted(&self, position: usize) -> Option<(&messenger::Header, &[u8])> {
+        let write_head_position = self
+            .buffer
+            .write_head
+            .load(std::sync::atomic::Ordering::Relaxed);
+
+        // Writers never wait for readers: once a reservation extends more
+        // than wrap_size past `position`, this reader's slot has been handed
+        // to a newer message and its own message is gone. Fail loudly.
+        assert!(
+            position >= write_head_position
+                || write_head_position - position <= self.buffer.wrap_size,
+            "reader at position {position} fell behind the writers (write head \
+             {write_head_position}) and its messages were overwritten; \
+             increase the bus buffer size or consume faster"
+        );
+
+        None
     }
 }
 
 impl traits::core::Reader for CircularBus {
+    #[inline]
     fn read(&self, position: usize) -> Option<(&messenger::Header, &[u8])> {
-        let read_head_position = self
-            .buffer
-            .read_head
-            .load(std::sync::atomic::Ordering::Acquire);
-
-        if position >= read_head_position {
-            return None;
-        }
-        let wrapped_position = position % self.buffer.wrap_size;
+        let wrapped_position = position & self.buffer.wrap_mask;
 
         let ptr = self.buffer.mmap.get_ptr() as *const u8;
         let ptr = unsafe { ptr.add(wrapped_position) };
 
-        // A slot is only valid for the exact position its writer stamped:
-        // mid-message offsets and slots reused by a newer lap fail here.
-        let stamp = unsafe { stamp_of(ptr) }.load(std::sync::atomic::Ordering::Acquire);
-        if stamp != position as u64 {
-            return None;
+        let header_ptr = ptr as *const messenger::Header;
+
+        // Fast path: a slot is readable exactly when its writer committed it
+        // for this position. In-flight slots, slots whose writer panicked,
+        // mid-message offsets, and other laps all fail the comparison. The
+        // Acquire load pairs with the writer's Release commit, making the
+        // header and payload writes visible. Note this touches only the slot
+        // cache line — not write_head, which writers contend on.
+        let stamp = unsafe { &(*header_ptr).commit_stamp }
+            .load(std::sync::atomic::Ordering::Acquire);
+        if stamp != messenger::Header::commit_stamp_for(position) {
+            return self.read_uncommitted(position);
         }
 
-        let header_ptr = ptr as *const messenger::Header;
         let header = unsafe { &*header_ptr };
         let len = header.size as usize;
         if messenger::ALIGNED_HEADER_SIZE + len > self.buffer.wrap_size {
@@ -321,10 +327,11 @@ mod tests {
         );
     }
 
-    /// Once the ring wraps, a stale position must not silently return data
-    /// from a newer message lap.
+    /// Once the ring wraps past a reader's position, its messages are gone;
+    /// the reader must panic loudly instead of receiving newer-lap data.
     #[test]
-    fn test_read_rejects_overwritten_slot() {
+    #[should_panic(expected = "fell behind")]
+    fn test_lapped_reader_panics() {
         use crate::traits::core::Reader;
         use crate::traits::extended::Sender;
 
@@ -337,13 +344,30 @@ mod tests {
             HandlerA::send(&message, &bus);
         }
 
-        if let Some((_, buffer)) = bus.read(0) {
-            let first = u16::from_ne_bytes([buffer[0], buffer[1]]);
-            assert_eq!(
-                first, 0,
-                "read(0) returned data from a newer lap as if it were message 0"
-            );
+        let _ = bus.read(0);
+    }
+
+    /// A reader that is merely behind — but not lapped — still reads its
+    /// messages intact.
+    #[test]
+    fn test_lagging_reader_within_capacity_reads_intact() {
+        use crate::traits::core::Reader;
+        use crate::traits::extended::Sender;
+
+        let bus = CircularBus::new(&Config {});
+        let slot = messenger::ALIGNED_HEADER_SIZE
+            + messenger::align_to_usize(std::mem::size_of::<MsgA>());
+        // Fill exactly up to capacity: the oldest message is still intact.
+        for i in 0..(8192 / slot) {
+            let message = MsgA {
+                data: [i as u16, 1, 2, 3, 4],
+            };
+            HandlerA::send(&message, &bus);
         }
+
+        let (_, buffer) = bus.read(0).expect("oldest message should still be readable");
+        let first = u16::from_ne_bytes([buffer[0], buffer[1]]);
+        assert_eq!(first, 0);
     }
 
     /// A message larger than the ring capacity must be rejected instead of
@@ -365,10 +389,11 @@ mod tests {
         bus.write::<MsgA, HandlerA, _>(9000, |_| {});
     }
 
-    /// A panicking write callback must not leave the bus in a state where
-    /// every subsequent writer spins forever waiting to publish.
+    /// Writers commit independently: a panicking write callback leaves its
+    /// own slot uncommitted but must not affect any other writer.
     #[test]
     fn test_panicking_writer_does_not_block_bus() {
+        use crate::traits::core::Reader;
         use crate::traits::core::Writer;
 
         let bus = CircularBus::new(&Config {});
@@ -385,6 +410,14 @@ mod tests {
         });
         rx.recv_timeout(std::time::Duration::from_secs(2))
             .expect("writer deadlocked after a previous callback panicked");
+
+        // The panicked slot stays invisible; the next writer's slot commits.
+        assert!(bus.read(0).is_none(), "panicked slot must stay uncommitted");
+        let slot = messenger::ALIGNED_HEADER_SIZE + messenger::align_to_usize(16);
+        assert!(
+            bus.read(slot).is_some(),
+            "later writers must commit independently of the panicked one"
+        );
     }
 
     /// The zero-copy sender hands the callback a *mut M into the ring buffer.
@@ -414,6 +447,159 @@ mod tests {
                     "zero-copy pointer violates the message type's alignment"
                 );
             });
+        }
+    }
+
+    /// Maximum-contention stress test: many writers hammer `write_head` with
+    /// back-to-back reservations while several independent readers chase the
+    /// head, so the `fetch_add` line, the per-slot commit stamps, and the
+    /// reader fast path are all contended at once. A barrier releases every
+    /// thread simultaneously at the start of each round to force the densest
+    /// possible interleaving, and mixed message sizes keep slot boundaries
+    /// shifting between laps.
+    ///
+    /// Each round writes less than `wrap_size` bytes and readers drain fully
+    /// before the next round starts, so no reader is ever lapped (across
+    /// rounds the ring itself still wraps many times, exercising the
+    /// stale-lap stamp rejection). Every reader therefore must observe every
+    /// message exactly once, in per-writer order, with every payload byte
+    /// and every zeroed alignment tail intact — any torn write, lost commit,
+    /// or cross-slot corruption fails an assertion.
+    #[test]
+    fn test_high_contention_concurrent_writers_and_readers() {
+        use crate::traits::core::Handler;
+        use crate::traits::core::Message;
+        use crate::traits::core::Reader;
+        use crate::traits::core::Writer;
+
+        const WRITERS: usize = if cfg!(miri) { 3 } else { 8 };
+        const READERS: usize = if cfg!(miri) { 2 } else { 4 };
+        const ROUNDS: usize = if cfg!(miri) { 2 } else { 8 };
+        const MSGS_PER_WRITER_PER_ROUND: usize = if cfg!(miri) { 20 } else { 750 };
+        // Deliberately unaligned sizes so the zeroed alignment tails are
+        // exercised; all hold the 16-byte (writer, seq) preamble.
+        const SIZES: [usize; 4] = [17, 24, 39, 56];
+        const BUFFER_SIZE: usize = 1 << 21;
+
+        // One round must fit in wrap_size, or readers could be lapped and
+        // the test would race by design instead of by accident.
+        const MAX_SLOT: usize =
+            messenger::ALIGNED_HEADER_SIZE + messenger::align_to_usize(SIZES[3]);
+        const _: () = assert!(WRITERS * MSGS_PER_WRITER_PER_ROUND * MAX_SLOT <= BUFFER_SIZE >> 1);
+
+        struct BigConfig {}
+        impl super::Config for BigConfig {
+            fn get_buffer_size(&self) -> usize {
+                BUFFER_SIZE
+            }
+        }
+
+        let bus = CircularBus::new(&BigConfig {});
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(WRITERS + READERS));
+        let mut handles = Vec::new();
+
+        for writer_id in 0..WRITERS {
+            let bus = bus.clone();
+            let barrier = barrier.clone();
+            handles.push(std::thread::spawn(move || {
+                let mut seq: u64 = 0;
+                for _ in 0..ROUNDS {
+                    barrier.wait();
+                    for _ in 0..MSGS_PER_WRITER_PER_ROUND {
+                        let size = SIZES[(seq % SIZES.len() as u64) as usize];
+                        bus.write::<MsgA, HandlerA, _>(size, |buf| {
+                            buf[..8].copy_from_slice(&(writer_id as u64).to_ne_bytes());
+                            buf[8..16].copy_from_slice(&seq.to_ne_bytes());
+                            for (i, b) in buf[16..size].iter_mut().enumerate() {
+                                *b = (writer_id as u8) ^ (seq as u8) ^ (i as u8);
+                            }
+                        });
+                        seq += 1;
+                    }
+                    // Wait for readers to drain before the next round can
+                    // wrap the ring into this round's slots.
+                    barrier.wait();
+                }
+            }));
+        }
+
+        for _ in 0..READERS {
+            let bus = bus.clone();
+            let barrier = barrier.clone();
+            handles.push(std::thread::spawn(move || {
+                let mut position: usize = 0;
+                let mut last_seq = [u64::MAX; WRITERS];
+                for _ in 0..ROUNDS {
+                    barrier.wait();
+                    let mut consumed = 0;
+                    let mut spins: u32 = 0;
+                    while consumed < WRITERS * MSGS_PER_WRITER_PER_ROUND {
+                        let Some((hdr, buf)) = bus.read(position) else {
+                            // Mostly spin to stay in the writers' faces, but
+                            // yield occasionally so oversubscribed CI runners
+                            // still make progress.
+                            spins += 1;
+                            if spins % 128 == 0 {
+                                std::thread::yield_now();
+                            } else {
+                                std::hint::spin_loop();
+                            }
+                            continue;
+                        };
+                        spins = 0;
+
+                        assert_eq!(hdr.source, HandlerA::ID);
+                        assert_eq!(hdr.message_id, MsgA::ID);
+
+                        let writer =
+                            u64::from_ne_bytes(buf[..8].try_into().unwrap()) as usize;
+                        let seq = u64::from_ne_bytes(buf[8..16].try_into().unwrap());
+                        assert!(writer < WRITERS, "payload writer id corrupted: {writer}");
+                        assert_eq!(
+                            seq,
+                            last_seq[writer].wrapping_add(1),
+                            "writer {writer}: message lost, duplicated or reordered"
+                        );
+                        last_seq[writer] = seq;
+
+                        // The size is derivable from seq, so a header torn
+                        // across slots cannot go unnoticed.
+                        let size = SIZES[(seq % SIZES.len() as u64) as usize];
+                        assert_eq!(hdr.size as usize, messenger::align_to_usize(size));
+                        assert_eq!(buf.len(), hdr.size as usize);
+                        for (i, &b) in buf[16..size].iter().enumerate() {
+                            assert_eq!(
+                                b,
+                                (writer as u8) ^ (seq as u8) ^ (i as u8),
+                                "writer {writer} seq {seq}: torn payload at byte {i}"
+                            );
+                        }
+                        assert!(
+                            buf[size..].iter().all(|&b| b == 0),
+                            "writer {writer} seq {seq}: alignment tail not zeroed"
+                        );
+
+                        position += messenger::ALIGNED_HEADER_SIZE + hdr.size as usize;
+                        consumed += 1;
+                    }
+                    barrier.wait();
+                }
+                // Drained every round, so every writer's full sequence range
+                // must have been observed.
+                for (writer, last) in last_seq.iter().enumerate() {
+                    assert_eq!(
+                        *last as usize + 1,
+                        ROUNDS * MSGS_PER_WRITER_PER_ROUND,
+                        "writer {writer}: not all messages observed"
+                    );
+                }
+            }));
+        }
+
+        for handle in handles {
+            if let Err(panic) = handle.join() {
+                std::panic::resume_unwind(panic);
+            }
         }
     }
 

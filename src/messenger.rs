@@ -3,13 +3,30 @@ pub struct Header {
     pub source: u16,
     pub message_id: u16,
     pub size: u16,
+    /// Publication stamp: 0 while the slot is unwritten or in flight,
+    /// [`Header::commit_stamp_for`]`(position)` once the message is
+    /// committed. Maintained exclusively by the bus implementations.
+    pub(crate) commit_stamp: std::sync::atomic::AtomicU64,
 }
+
+impl Header {
+    /// Commit value for the slot written at `position`: offset by one so a
+    /// zeroed (never-written or in-flight) stamp can never match a real
+    /// position.
+    pub(crate) const fn commit_stamp_for(position: usize) -> u64 {
+        position as u64 + 1
+    }
+}
+
+// Slot positions are aligned to usize, but the atomic commit stamp requires
+// u64 alignment; on targets where usize is smaller than u64 the headers
+// would be under-aligned, so refuse to compile there.
+const _: () = assert!(std::mem::align_of::<Header>() <= std::mem::size_of::<usize>());
+
 pub const HEADER_SIZE: usize = std::mem::size_of::<Header>();
-/// Size of the per-message slot prefix: the aligned [`Header`] followed by an
-/// internal validity stamp maintained by the bus implementations. The message
-/// payload starts at this offset within a slot.
-pub const ALIGNED_HEADER_SIZE: usize =
-    align_to_usize(HEADER_SIZE) + std::mem::size_of::<u64>();
+/// Size of the per-message slot prefix. The message payload starts at this
+/// offset within a slot.
+pub const ALIGNED_HEADER_SIZE: usize = align_to_usize(HEADER_SIZE);
 
 /// Aligns to register size of current architecture
 pub const fn align_to_usize(from: usize) -> usize {
