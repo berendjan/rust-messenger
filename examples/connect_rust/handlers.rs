@@ -11,7 +11,8 @@ rust_messenger::messenger_id_enum! {
     }
 }
 
-/// Issues one account lookup on start and prints the response it gets back.
+/// Issues one account lookup on start and prints the response. It receives the
+/// response as a zero-copy view — `name` borrows straight from the bus slot.
 pub struct Client {}
 
 impl Client {
@@ -34,20 +35,23 @@ impl traits::core::Handler for Client {
     }
 }
 
-impl traits::core::Handle<messages::GetAccountResponse> for Client {
+// Handles the borrowed VIEW, not the owned message: `message.name` is a
+// `&str` pointing into the bus buffer, decoded with no allocation.
+impl<'a> traits::core::Handle<messages::GetAccountResponseView<'a>> for Client {
     fn handle<W: traits::core::Writer>(
         &mut self,
-        message: &messages::GetAccountResponse,
+        message: &messages::GetAccountResponseView<'a>,
         _writer: &W,
     ) {
         println!(
-            "Client <- GetAccountResponse {{ account_id: {}, name: {:?}, balance: {} }}",
+            "Client <- GetAccountResponseView {{ account_id: {}, name: {:?} (borrowed), balance: {} }}",
             message.account_id, message.name, message.balance
         );
     }
 }
 
-/// Answers account lookups, the way a connect-rust service handler would.
+/// Answers account lookups. Reads the request as a zero-copy view and replies
+/// with an owned response that the bus serializes.
 pub struct AccountService {}
 
 impl AccountService {
@@ -61,13 +65,13 @@ impl traits::core::Handler for AccountService {
     const ID: HandlerId = HandlerId::AccountService;
 }
 
-impl traits::core::Handle<messages::GetAccountRequest> for AccountService {
+impl<'a> traits::core::Handle<messages::GetAccountRequestView<'a>> for AccountService {
     fn handle<W: traits::core::Writer>(
         &mut self,
-        message: &messages::GetAccountRequest,
+        message: &messages::GetAccountRequestView<'a>,
         writer: &W,
     ) {
-        println!("AccountService <- GetAccountRequest {{ account_id: {} }}", message.account_id);
+        println!("AccountService <- GetAccountRequestView {{ account_id: {} }}", message.account_id);
 
         let response = messages::GetAccountResponse {
             account_id: message.account_id,

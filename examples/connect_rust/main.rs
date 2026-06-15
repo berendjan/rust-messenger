@@ -8,6 +8,11 @@ mod messages;
 //
 //   Client -> GetAccountRequest -> AccountService
 //   AccountService -> GetAccountResponse -> Client
+//
+// Senders write OWNED messages (serialized by buffa). Receivers are routed
+// the borrowed VIEW types: the route names `...View`, so each handler decodes
+// the slot in place with buffa's zero-copy `decode_view` — string fields
+// borrow straight from the bus buffer with no allocation.
 
 rust_messenger::Messenger! {
     config::Config,
@@ -16,14 +21,14 @@ rust_messenger::Messenger! {
             client: handlers::Client,
         ]
         routes: [
-            handlers::AccountService, messages::GetAccountResponse: [ client ],
+            handlers::AccountService, messages::GetAccountResponseView: [ client ],
         ]
     Backend:
         handlers: [
             account_service: handlers::AccountService,
         ]
         routes: [
-            handlers::Client, messages::GetAccountRequest: [ account_service ],
+            handlers::Client, messages::GetAccountRequestView: [ account_service ],
         ]
 }
 
