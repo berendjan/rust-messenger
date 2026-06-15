@@ -98,6 +98,22 @@ impl traits::core::Handler for AsyncClient {
     const ID: HandlerId = HandlerId::AsyncClient;
 }
 
+impl AsyncClient {
+    /// Zero-extra-copy socket→bus forward. The socket frame is already the
+    /// exact bincode payload the bus carries for a `Response` (the server
+    /// encoded it with the same config `ExtendedMessage` uses), so this copies
+    /// the wire bytes straight into the bus slot — skipping the decode and
+    /// re-encode that `Self::send` would do. `write` takes the message type
+    /// (for the header's id) and the source handler, then a callback over the
+    /// slot; the slot is the padded buffer, so copy into the `frame.len()`
+    /// prefix.
+    fn forward_response_raw<W: traits::core::Writer>(writer: &W, frame: &[u8]) {
+        writer.write::<messages::Response, AsyncClient, _>(frame.len(), |slot| {
+            slot[..frame.len()].copy_from_slice(frame);
+        });
+    }
+}
+
 impl traits::core::Handle<messages::Request> for AsyncClient {
     fn handle<W: traits::core::Writer>(&mut self, message: &messages::Request, writer: &W) {
         println!("received messages::Request at AsyncClient: {message:?}");
@@ -142,13 +158,15 @@ impl traits::core::Handle<messages::Request> for AsyncClient {
 
             match read_frame(&mut socket).await {
                 Ok(Some(frame)) => {
-                    // parse incoming response
-                    let incoming_response = messages::Response::deserialize_from(&frame);
-
-                    println!("received messages::Response at AsyncClient {incoming_response:?} from {addr}");
-
-                    // send response to message bus
-                    Self::send(&incoming_response, &wrt);
+                    // The socket frame is already the exact bincode payload
+                    // the bus carries for a Response, so forward the wire
+                    // bytes straight into the bus slot — no decode, no
+                    // re-encode. The downstream SyncApp handler decodes it.
+                    println!(
+                        "AsyncClient forwarding {} response bytes from {addr} to the bus",
+                        frame.len()
+                    );
+                    Self::forward_response_raw(&wrt, &frame);
                 }
                 Ok(None) => (), // server closed without responding
                 Err(e) => eprintln!("AsyncClient: reading response failed: {e}"),
