@@ -39,7 +39,7 @@ fn main() {
     for i in 0..100_000u64 {
         Bench::send::<Msg, _, _>(&bus, |msg| unsafe { (*msg).data = [i, i, i, i] });
         let (header, _) = bus.read(position).unwrap();
-        position += rust_messenger::messenger::ALIGNED_HEADER_SIZE + header.size as usize;
+        position += header.slot_len();
     }
 
     let start = std::time::Instant::now();
@@ -47,7 +47,7 @@ fn main() {
         Bench::send::<Msg, _, _>(&bus, |msg| unsafe { (*msg).data = [i, i, i, i] });
         let (header, buffer) = bus.read(position).unwrap();
         std::hint::black_box(buffer.as_ptr());
-        position += rust_messenger::messenger::ALIGNED_HEADER_SIZE + header.size as usize;
+        position += header.slot_len();
     }
     let elapsed = start.elapsed();
     println!(

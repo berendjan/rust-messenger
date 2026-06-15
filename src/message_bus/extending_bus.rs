@@ -68,7 +68,7 @@ impl ExtendingBus {
         // file (a fresh file scans straight to 0).
         let mut end = 0;
         while let Some((header, _)) = bus.read(end) {
-            end += messenger::ALIGNED_HEADER_SIZE + header.size as usize;
+            end += header.slot_len();
         }
         bus.inner
             .write_head
@@ -141,7 +141,10 @@ impl traits::core::Writer for ExtendingBus {
             );
             std::ptr::addr_of_mut!((*hdr_ptr).source).write(H::ID.into());
             std::ptr::addr_of_mut!((*hdr_ptr).message_id).write(M::ID.into());
-            std::ptr::addr_of_mut!((*hdr_ptr).size).write(aligned_size as u16);
+            // `size` is the exact payload length; `aligned_size` is the padded
+            // length the slot occupies (used to reach the next slot).
+            std::ptr::addr_of_mut!((*hdr_ptr).size).write(size as u16);
+            std::ptr::addr_of_mut!((*hdr_ptr).aligned_size).write(aligned_size as u16);
         }
 
         let msg_ptr = unsafe { ptr.add(messenger::ALIGNED_HEADER_SIZE) };
@@ -184,13 +187,13 @@ impl traits::core::Reader for ExtendingBus {
         }
 
         let header = unsafe { &*header_ptr };
-        let len = header.size as usize;
-        if position + messenger::ALIGNED_HEADER_SIZE + len > mapped {
+        // The whole padded slot must be mapped; return the exact payload.
+        if header.size > header.aligned_size || position + header.slot_len() > mapped {
             return None;
         }
 
         let ptr = unsafe { ptr.add(messenger::ALIGNED_HEADER_SIZE) };
-        let buffer = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let buffer = unsafe { std::slice::from_raw_parts(ptr, header.size as usize) };
         Some((header, buffer))
     }
 }

@@ -149,7 +149,7 @@ fn messenger_compiles_and_runs_despite_extra_partial_eq_impls() {
     let mut last_bounces = 0;
     while std::time::Instant::now() < deadline && last_bounces < 4 {
         while let Some((header, buffer)) = circular.read(position) {
-            position += rust_messenger::messenger::ALIGNED_HEADER_SIZE + header.size as usize;
+            position += header.slot_len();
             if header.message_id == u16::from(MessageId::Ball) {
                 last_bounces = last_bounces.max(Ball::deserialize_from(buffer).bounces);
             }

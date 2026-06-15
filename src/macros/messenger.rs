@@ -98,7 +98,7 @@
 ///         self.handler_b.on_start(message_bus);
 ///         loop {
 ///             if let Some((header, buffer)) = message_bus.read(self.position) {
-///                 self.position += messenger::ALIGNED_HEADER_SIZE + buffer.len();
+///                 self.position += header.slot_len();
 ///                 self.route(&header, &buffer, message_bus);
 ///             }
 ///
@@ -127,7 +127,7 @@
 ///         self.handler_c.on_start(message_bus);
 ///         loop {
 ///             if let Some((header, buffer)) = message_bus.read(self.position) {
-///                 self.position += messenger::ALIGNED_HEADER_SIZE + buffer.len();
+///                 self.position += header.slot_len();
 ///                 self.route(&header, &buffer, message_bus);
 ///             }
 ///
@@ -262,7 +262,9 @@ macro_rules! Messenger {
                     )+
                     loop {
                         if let Some((header, buffer)) = message_bus.read(self.position) {
-                            self.position += messenger::ALIGNED_HEADER_SIZE + buffer.len();
+                            // Advance by the padded slot length, not the
+                            // payload length, to land on the next slot.
+                            self.position += header.slot_len();
                             self.route(&header, &buffer, message_bus);
                         }
 

@@ -2,7 +2,17 @@
 pub struct Header {
     pub source: u16,
     pub message_id: u16,
+    /// Exact (unpadded) length of the payload. This is what readers hand to a
+    /// deserializer.
     pub size: u16,
+    /// Payload length rounded up to alignment — the number of payload bytes
+    /// the slot actually occupies. Readers add [`ALIGNED_HEADER_SIZE`] to this
+    /// to reach the next slot. Stored (rather than recomputed from `size`) so
+    /// the slot stream is self-describing: any reader can walk it without
+    /// knowing the alignment rule, including across architectures. Fills the
+    /// padding the 8-byte `commit_stamp` would otherwise leave, so the header
+    /// stays 16 bytes.
+    pub aligned_size: u16,
     /// Publication stamp: 0 while the slot is unwritten or in flight,
     /// [`Header::commit_stamp_for`]`(position)` once the message is
     /// committed. Maintained exclusively by the bus implementations.
@@ -15,6 +25,12 @@ impl Header {
     /// position.
     pub(crate) const fn commit_stamp_for(position: usize) -> u64 {
         position as u64 + 1
+    }
+
+    /// Total bytes this message occupies in the bus: the slot prefix plus the
+    /// padded payload. Add this to a position to reach the next message.
+    pub fn slot_len(&self) -> usize {
+        ALIGNED_HEADER_SIZE + self.aligned_size as usize
     }
 }
 

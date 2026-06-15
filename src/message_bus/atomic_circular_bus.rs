@@ -130,9 +130,14 @@ impl traits::core::Writer for CircularBus {
             );
             std::ptr::addr_of_mut!((*hdr_ptr).source).write(H::ID.into());
             std::ptr::addr_of_mut!((*hdr_ptr).message_id).write(M::ID.into());
-            std::ptr::addr_of_mut!((*hdr_ptr).size).write(aligned_size as u16);
+            // `size` is the exact payload length; `aligned_size` is the padded
+            // length the slot occupies (used to reach the next slot).
+            std::ptr::addr_of_mut!((*hdr_ptr).size).write(size as u16);
+            std::ptr::addr_of_mut!((*hdr_ptr).aligned_size).write(aligned_size as u16);
         }
 
+        // The callback still gets the full padded buffer to write into; the
+        // header records that only `size` of it is the real payload.
         let msg_ptr = unsafe { ptr.add(messenger::ALIGNED_HEADER_SIZE) };
         let buffer = unsafe { std::slice::from_raw_parts_mut(msg_ptr, aligned_size) };
         callback(buffer);
@@ -197,13 +202,13 @@ impl traits::core::Reader for CircularBus {
         }
 
         let header = unsafe { &*header_ptr };
-        let len = header.size as usize;
-        if messenger::ALIGNED_HEADER_SIZE + len > self.buffer.wrap_size {
+        // Validate the padded slot fits; return the exact (unpadded) payload.
+        if header.slot_len() > self.buffer.wrap_size || header.size > header.aligned_size {
             return None;
         }
 
         let ptr = unsafe { ptr.add(messenger::ALIGNED_HEADER_SIZE) };
-        let buffer = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let buffer = unsafe { std::slice::from_raw_parts(ptr, header.size as usize) };
         Some((header, buffer))
     }
 }
@@ -277,14 +282,17 @@ mod tests {
 
             assert_eq!(hdr.source, HandlerA::ID);
             assert_eq!(hdr.message_id, MsgA::ID);
-            let expected_size = messenger::align_to_usize(std::mem::size_of::<MsgA>());
-            assert_eq!(hdr.size, expected_size as u16);
+            assert_eq!(hdr.size as usize, std::mem::size_of::<MsgA>());
+            assert_eq!(
+                hdr.aligned_size as usize,
+                messenger::align_to_usize(std::mem::size_of::<MsgA>())
+            );
 
             let msg_ptr = buffer.as_ptr() as *const MsgA;
             let message = unsafe { &*msg_ptr };
             assert_eq!(message.data, [i, 1, 2, 3, 4]);
 
-            position += messenger::ALIGNED_HEADER_SIZE + hdr.size as usize;
+            position += hdr.slot_len();
         }
     }
 
@@ -563,10 +571,13 @@ mod tests {
                         last_seq[writer] = seq;
 
                         // The size is derivable from seq, so a header torn
-                        // across slots cannot go unnoticed.
+                        // across slots cannot go unnoticed. `read` returns the
+                        // exact unpadded payload; the padded length lives in
+                        // aligned_size.
                         let size = SIZES[(seq % SIZES.len() as u64) as usize];
-                        assert_eq!(hdr.size as usize, messenger::align_to_usize(size));
-                        assert_eq!(buf.len(), hdr.size as usize);
+                        assert_eq!(hdr.size as usize, size);
+                        assert_eq!(hdr.aligned_size as usize, messenger::align_to_usize(size));
+                        assert_eq!(buf.len(), size);
                         for (i, &b) in buf[16..size].iter().enumerate() {
                             assert_eq!(
                                 b,
@@ -574,12 +585,8 @@ mod tests {
                                 "writer {writer} seq {seq}: torn payload at byte {i}"
                             );
                         }
-                        assert!(
-                            buf[size..].iter().all(|&b| b == 0),
-                            "writer {writer} seq {seq}: alignment tail not zeroed"
-                        );
 
-                        position += messenger::ALIGNED_HEADER_SIZE + hdr.size as usize;
+                        position += hdr.slot_len();
                         consumed += 1;
                     }
                     barrier.wait();
@@ -622,14 +629,13 @@ mod tests {
 
             assert_eq!(hdr.source, HandlerA::ID);
             assert_eq!(hdr.message_id, MsgA::ID);
-            let expected_size = messenger::align_to_usize(std::mem::size_of::<MsgA>());
-            assert_eq!(hdr.size, expected_size as u16);
+            assert_eq!(hdr.size as usize, std::mem::size_of::<MsgA>());
 
             let msg_ptr = buffer.as_ptr() as *const MsgA;
             let message = unsafe { &*msg_ptr };
             assert_eq!(message.data, [i, 1, 2, 3, 4]);
 
-            position += messenger::ALIGNED_HEADER_SIZE + hdr.size as usize;
+            position += hdr.slot_len();
         }
     }
 }

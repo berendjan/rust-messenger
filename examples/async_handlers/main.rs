@@ -65,7 +65,7 @@ pub fn main() {
     let mut position = 0;
     'wait: while std::time::Instant::now() < deadline {
         while let Some((header, _)) = bus.read(position) {
-            position += rust_messenger::messenger::ALIGNED_HEADER_SIZE + header.size as usize;
+            position += header.slot_len();
             if header.source == u16::from(handlers::HandlerId::AsyncClient)
                 && header.message_id == u16::from(messages::MessageId::Response)
             {
