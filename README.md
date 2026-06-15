@@ -57,31 +57,45 @@ The library has 3 operating modes:
 
 ### default mode
 
-This is used for serializing with other libraries such as `Prost` or `Serde`. It is recommended to implement `traits::ExtendedMessage` for each message.
+This is used for serializing with other libraries such as `Prost` or `Serde`. Implement `traits::core::Message` (the source/id metadata) and `traits::extended::ExtendedMessage` (size + serialize) for each message; deserialization is a plain inherent method the routing macro calls. Sending then uses the `traits::extended::Sender` blanket impl.
 
-Example trait `serde` implementation macro from `examples/serde_bincode`:
+Example trait `serde` (bincode 2.x) implementation macro from `examples/serde_bincode`:
 
 ```rust
+use rust_messenger::traits;
+
+rust_messenger::messenger_id_enum!(
+    MessageId {
+        MessageA = 0,
+        MessageB = 1,
+    }
+);
+
 macro_rules! impl_message_traits {
     ($type:ty, $id:expr) => {
-        impl traits::Message for $type {
+        impl traits::core::Message for $type {
             type Id = MessageId;
             const ID: MessageId = $id;
         }
 
-        impl traits::DeserializeFrom for $type {
-            fn deserialize_from(buffer: &[u8]) -> Self {
-                bincode::deserialize(buffer).unwrap()
+        impl $type {
+            pub fn deserialize_from(buffer: &[u8]) -> Self {
+                bincode::serde::borrow_decode_from_slice(buffer, bincode::config::standard())
+                    .unwrap()
+                    .0
             }
         }
 
-        impl traits::ExtendedMessage for $type {
+        impl traits::extended::ExtendedMessage for $type {
             fn get_size(&self) -> usize {
-                bincode::serialized_size(self).unwrap() as usize
+                bincode::serde::encode_to_vec(self, bincode::config::standard())
+                    .unwrap()
+                    .len()
             }
 
             fn write_into(&self, buffer: &mut [u8]) {
-                bincode::serialize_into(buffer, self).unwrap();
+                bincode::serde::encode_into_slice(self, buffer, bincode::config::standard())
+                    .unwrap();
             }
         }
     };
@@ -91,7 +105,7 @@ impl_message_traits!(MessageA, MessageId::MessageA);
 impl_message_traits!(MessageB, MessageId::MessageB);
 ```
 
-example prost trait implementation macro
+Equivalent `prost` implementation macro:
 
 ```rust
 rust_messenger::messenger_id_enum!(
@@ -103,12 +117,12 @@ rust_messenger::messenger_id_enum!(
 
 macro_rules! impl_message_traits {
     ($type:ty, $id:expr) => {
-        impl rust_messenger::traits::Message for $type {
+        impl rust_messenger::traits::core::Message for $type {
             type Id = MessageId;
             const ID: Self::Id = $id;
         }
 
-        impl rust_messenger::traits::ExtendedMessage for $type {
+        impl rust_messenger::traits::extended::ExtendedMessage for $type {
             fn get_size(&self) -> usize {
                 self.encoded_len()
             }
@@ -118,9 +132,9 @@ macro_rules! impl_message_traits {
             }
         }
 
-        impl rust_messenger::traits::DeserializeFrom for $type {
-            fn deserialize_from(buffer: &[u8]) -> Self {
-                Self::decode(buffer.to_vec().as_slice()).unwrap()
+        impl $type {
+            pub fn deserialize_from(buffer: &[u8]) -> Self {
+                Self::decode(buffer).unwrap()
             }
         }
     };
@@ -128,24 +142,114 @@ macro_rules! impl_message_traits {
 
 impl_message_traits!(account::GetAccountRequest, MessageId::GetAccountRequest);
 impl_message_traits!(account::GetAccountResponse, MessageId::GetAccountResponse);
-
 ```
 
 ### zero_copy mode
 
-This can be used when all messages are reinterpretable from a slice of bytes (by casting `*mut u8` to `&Message`) and each message type needs to implement `traits::ZeroCopyMessage`.
-Note that if you choose the persist the messages in a file-backed mmap, you should ensure that each type is `#[repr(C)]` for deterministic memory layout over consecutive builds.
-For writing to the message bus you provide a callback with a `ptr` to a zero'd buffer. To prevent UB you may use `std::ptr::addr_of_mut((*ptr).field).write(value);`, see examples.
+This can be used when all messages are reinterpretable from a slice of bytes (by casting `*const u8` to `&Message`); each message type implements `traits::zero_copy::ZeroCopyMessage`. The trait requires `Copy + 'static` and rejects over-aligned types at compile time, but it **cannot** verify the bytes are a valid instance — see [Safety & known issues](#safety--known-issues). If you persist messages in a file-backed mmap, also make each type `#[repr(C)]` for a deterministic layout across builds.
+
+Sending uses the `traits::zero_copy::Sender` blanket impl, whose callback receives a `*mut Message` into the bus buffer. The payload is not pre-zeroed, so write every field; `std::ptr::addr_of_mut!((*ptr).field).write(value)` avoids forming a reference to uninitialized memory:
+
+```rust
+use rust_messenger::traits;
+use rust_messenger::traits::zero_copy::Sender;
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct MessageB {
+    pub other_val: u16,
+}
+
+impl traits::core::Message for MessageB {
+    type Id = MessageId;
+    const ID: MessageId = MessageId::MessageB;
+}
+impl traits::zero_copy::ZeroCopyMessage for MessageB {}
+
+impl MessageB {
+    // The reader side: reinterpret the buffer bytes in place.
+    pub fn deserialize_from(buffer: &[u8]) -> &Self {
+        assert!(buffer.len() >= std::mem::size_of::<Self>());
+        let ptr = buffer.as_ptr() as *const Self;
+        assert!(ptr.is_aligned());
+        unsafe { &*ptr }
+    }
+}
+
+// The writer side, inside a handler:
+Self::send::<MessageB, _, _>(writer, |msg| unsafe {
+    std::ptr::addr_of_mut!((*msg).other_val).write(0)
+});
+```
+
+## Safety & known issues
+
+This is a lock-free, shared-memory library built on `unsafe`. Most of the bus
+internals (raw pointers, `mmap`, atomic publication) are encapsulated, but a
+few obligations and limitations are unavoidably the user's responsibility.
+Read these before using it for anything load-bearing.
+
+### Caller obligations (violating these is undefined behaviour)
+
+- **`ZeroCopyMessage` types must be valid from arbitrary bytes.** A reader
+  reinterprets buffer bytes as `&Message`, so the type must have no invalid
+  bit patterns (no `bool`, `enum`, `char`, `NonZero*`, references, `Box`,
+  `Vec`, …) and must own no heap data. The trait requires `Copy + 'static`
+  and rejects over-aligned types at compile time, but it **cannot** check
+  validity-from-bytes — that is on you. For file-backed/replayed buses also
+  make every message `#[repr(C)]` so the layout is stable across builds, and
+  write every byte (padding included), since padding is not guaranteed zero.
+- **`ExtendedMessage::write_into` must write exactly `get_size()` bytes** and
+  `get_size()` must not exceed the bus capacity. A mismatch panics inside the
+  write callback (see below).
+
+### Design limitations to be aware of
+
+- **A panicking write callback is not recoverable cleanly.** Publication is a
+  per-slot commit stamp set as the writer's last step, so a panic leaves an
+  uncommitted hole: other writers are unaffected, but in-order readers (and
+  the `ExtendingBus` reopen scan) stop at that position. Keep callbacks
+  infallible, or build with `panic = "abort"`. Note the `ExtendedMessage`
+  senders unwrap serialization errors, so a serializer that fails or
+  disagrees with `get_size()` will panic here.
+- **`CircularBus` readers that fall behind lose data.** Writers never wait for
+  readers; a reader more than half the buffer behind has had its slot
+  overwritten. `read` detects this and **panics** rather than returning torn
+  data — but a reference already handed out can still be overwritten in place
+  if a writer laps the ring while a handler holds it. Size the buffer for the
+  worst-case reader lag, and copy data out if you hold it across long work.
+  `ExtendingBus` does not have this failure mode (it never overwrites), but
+  trades it for unbounded growth up to a fixed reservation, then panics.
+- **Slot commit detection is probabilistic in the worst case.** A reader
+  confirms a slot by matching a 64-bit position stamp. For honest payloads
+  the chance of stale bytes forging a valid stamp is ~2⁻⁶⁴; this assumes
+  payloads do not embed bus positions as `u64` at slot offsets, so **do not
+  echo bus positions into message payloads**.
+- **Routing matches on raw `(source, message_id)` `u16` pairs.** Two distinct
+  `messenger_id_enum`s that map different variants to the same `u16` are
+  indistinguishable to a router and will deserialize a message as the wrong
+  type. Keep message ids globally unique. Unknown ids are ignored (they do not
+  panic), but `messenger_id_enum`'s `from_u16` panics on unknown input — use
+  the generated `TryFrom<u16>` for ids coming off the wire or out of a file.
+- **Platform support.** `AnonymousMmap` / `CircularBus` are Unix + Windows;
+  `ExtendingMmap` / `ExtendingBus` are Linux-only (they rely on `fallocate`
+  and `MAP_FIXED`).
 
 ## Todo
 
-- [ ] Linux Growable Mmap Wrapper
+- [x] Linux Growable Mmap Wrapper (`mmap::linux::ExtendingMmap`)
 - [ ] Macos Growable Mmap Wrapper
-- [ ] Persistent (File Backed) Message Bus
+- [ ] Windows Growable Mmap Wrapper (`VirtualAlloc2` + `MapViewOfFile3`)
+- [x] Persistent (File Backed) Message Bus (`message_bus::ExtendingBus`)
+- [x] Add Replay Functionality for Persistent (File Backed) Message Bus (`ExtendingBus` replays from position 0 and resumes appending on reopen)
 - [x] Condvar Message Bus, that blocks if there are no new messages to be read, write should notify_all
-- [ ] Add Replay Functionality for Persistant (File Backed) Message Bus
 - [x] remove zero copy feature
 - [x] Linux Anonymous Mmap Wrapper
+- [x] Cross-platform Anonymous Mmap Wrapper (Windows `VirtualAlloc`)
+- [x] Lock-free per-slot commit publication (writers publish independently, no `read_head` chain)
 - [x] Stop functionality
 - [x] Added user configuration input
 - [x] `Messenger::run()` returns a `Vec<JoinHandler>` wrapper class that will join the handles in the drop implementation.
+- [ ] Drain-on-stop: process remaining buffered messages before workers exit (today `stop()` ends the loops with messages possibly still queued)
+- [ ] Type-safe routing that prevents message-id collisions across separate id enums
+- [ ] Enforce/verify the `ExtendedMessage` size contract instead of panicking in the write callback
