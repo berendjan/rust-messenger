@@ -12,6 +12,7 @@ To run:
 ```bash
 cargo run --example serde_bincode
 cargo run --example zero_copy
+cargo run --example connect_rust  # protobuf messages via the buffa runtime
 ```
 
 ## Dev Quickstart
@@ -105,7 +106,7 @@ impl_message_traits!(MessageA, MessageId::MessageA);
 impl_message_traits!(MessageB, MessageId::MessageB);
 ```
 
-Equivalent implementation for [`connect-rust`](https://github.com/anthropics/connect-rust) message types, which serialize via the [`buffa`](https://docs.rs/buffa) protobuf runtime (`buffa::Message`: `encode_to_vec`, `decode_from_slice`):
+Equivalent implementation for [`connect-rust`](https://github.com/anthropics/connect-rust) message types, which serialize via the [`buffa`](https://docs.rs/buffa) protobuf runtime (`buffa::Message`: `encoded_len`, `encode`, `decode_from_slice`). A complete, runnable version is in `examples/connect_rust` (`cargo run --example connect_rust`):
 
 ```rust
 use buffa::Message; // brings encode_to_vec / decode_from_slice into scope

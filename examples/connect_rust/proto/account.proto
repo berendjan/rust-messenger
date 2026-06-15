@@ -1,0 +1,12 @@
+syntax = "proto3";
+package account;
+
+message GetAccountRequest {
+  uint64 account_id = 1;
+}
+
+message GetAccountResponse {
+  uint64 account_id = 1;
+  string name = 2;
+  uint64 balance = 3;
+}
