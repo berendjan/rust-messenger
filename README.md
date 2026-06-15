@@ -105,9 +105,11 @@ impl_message_traits!(MessageA, MessageId::MessageA);
 impl_message_traits!(MessageB, MessageId::MessageB);
 ```
 
-Equivalent `prost` implementation macro:
+Equivalent implementation for [`connect-rust`](https://github.com/anthropics/connect-rust) message types, which serialize via the [`buffa`](https://docs.rs/buffa) protobuf runtime (`buffa::Message`: `encode_to_vec`, `decode_from_slice`):
 
 ```rust
+use buffa::Message; // brings encode_to_vec / decode_from_slice into scope
+
 rust_messenger::messenger_id_enum!(
     MessageId {
         GetAccountRequest = 1,
@@ -124,17 +126,18 @@ macro_rules! impl_message_traits {
 
         impl rust_messenger::traits::extended::ExtendedMessage for $type {
             fn get_size(&self) -> usize {
-                self.encoded_len()
+                self.encode_to_vec().len()
             }
 
-            fn write_into(&self, mut buffer: &mut [u8]) {
-                self.encode_raw(&mut buffer);
+            fn write_into(&self, buffer: &mut [u8]) {
+                let bytes = self.encode_to_vec();
+                buffer[..bytes.len()].copy_from_slice(&bytes);
             }
         }
 
         impl $type {
             pub fn deserialize_from(buffer: &[u8]) -> Self {
-                Self::decode(buffer).unwrap()
+                <$type>::decode_from_slice(buffer).unwrap()
             }
         }
     };
@@ -143,6 +146,8 @@ macro_rules! impl_message_traits {
 impl_message_traits!(account::GetAccountRequest, MessageId::GetAccountRequest);
 impl_message_traits!(account::GetAccountResponse, MessageId::GetAccountResponse);
 ```
+
+`get_size`/`write_into` encode twice here (once to size, once to copy); if your `buffa` version exposes an encoded-length and an encode-into-slice method, use those to encode once. `buffa` also generates zero-copy view types (`FooView<'a>` via `decode_view`, borrowing `string`/`bytes` straight from the buffer) — a natural fit for reading messages straight off the bus without allocating.
 
 ### zero_copy mode
 
