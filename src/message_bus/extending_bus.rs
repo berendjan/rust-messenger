@@ -87,7 +87,7 @@ impl traits::core::Writer for ExtendingBus {
         let aligned_size = messenger::align_to_usize(size);
         let len = messenger::ALIGNED_HEADER_SIZE + aligned_size;
         assert!(
-            aligned_size <= u16::MAX as usize,
+            size <= u32::MAX as usize,
             "message of size {size} exceeds the maximum message size"
         );
 
@@ -141,10 +141,9 @@ impl traits::core::Writer for ExtendingBus {
             );
             std::ptr::addr_of_mut!((*hdr_ptr).source).write(H::ID.into());
             std::ptr::addr_of_mut!((*hdr_ptr).message_id).write(M::ID.into());
-            // `size` is the exact payload length; `aligned_size` is the padded
-            // length the slot occupies (used to reach the next slot).
-            std::ptr::addr_of_mut!((*hdr_ptr).size).write(size as u16);
-            std::ptr::addr_of_mut!((*hdr_ptr).aligned_size).write(aligned_size as u16);
+            // The exact payload length; the padded length the slot occupies is
+            // derived from it via Header::aligned_size when walking slots.
+            std::ptr::addr_of_mut!((*hdr_ptr).size).write(size as u32);
         }
 
         let msg_ptr = unsafe { ptr.add(messenger::ALIGNED_HEADER_SIZE) };
@@ -188,7 +187,7 @@ impl traits::core::Reader for ExtendingBus {
 
         let header = unsafe { &*header_ptr };
         // The whole padded slot must be mapped; return the exact payload.
-        if header.size > header.aligned_size || position + header.slot_len() > mapped {
+        if position + header.slot_len() > mapped {
             return None;
         }
 

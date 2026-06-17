@@ -95,7 +95,7 @@ impl traits::core::Writer for CircularBus {
         let aligned_size = messenger::align_to_usize(size);
         let len = messenger::ALIGNED_HEADER_SIZE + aligned_size;
         assert!(
-            len <= self.buffer.wrap_size && aligned_size <= u16::MAX as usize,
+            len <= self.buffer.wrap_size && size <= u32::MAX as usize,
             "message of size {size} exceeds the bus capacity ({} payload bytes per message)",
             self.buffer.wrap_size - messenger::ALIGNED_HEADER_SIZE
         );
@@ -130,10 +130,9 @@ impl traits::core::Writer for CircularBus {
             );
             std::ptr::addr_of_mut!((*hdr_ptr).source).write(H::ID.into());
             std::ptr::addr_of_mut!((*hdr_ptr).message_id).write(M::ID.into());
-            // `size` is the exact payload length; `aligned_size` is the padded
-            // length the slot occupies (used to reach the next slot).
-            std::ptr::addr_of_mut!((*hdr_ptr).size).write(size as u16);
-            std::ptr::addr_of_mut!((*hdr_ptr).aligned_size).write(aligned_size as u16);
+            // The exact payload length; the padded length the slot occupies is
+            // derived from it via Header::aligned_size when walking slots.
+            std::ptr::addr_of_mut!((*hdr_ptr).size).write(size as u32);
         }
 
         // The callback still gets the full padded buffer to write into; the
@@ -203,7 +202,7 @@ impl traits::core::Reader for CircularBus {
 
         let header = unsafe { &*header_ptr };
         // Validate the padded slot fits; return the exact (unpadded) payload.
-        if header.slot_len() > self.buffer.wrap_size || header.size > header.aligned_size {
+        if header.slot_len() > self.buffer.wrap_size {
             return None;
         }
 
@@ -284,7 +283,7 @@ mod tests {
             assert_eq!(hdr.message_id, MsgA::ID);
             assert_eq!(hdr.size as usize, std::mem::size_of::<MsgA>());
             assert_eq!(
-                hdr.aligned_size as usize,
+                hdr.aligned_size(),
                 messenger::align_to_usize(std::mem::size_of::<MsgA>())
             );
 
@@ -576,7 +575,7 @@ mod tests {
                         // aligned_size.
                         let size = SIZES[(seq % SIZES.len() as u64) as usize];
                         assert_eq!(hdr.size as usize, size);
-                        assert_eq!(hdr.aligned_size as usize, messenger::align_to_usize(size));
+                        assert_eq!(hdr.aligned_size(), messenger::align_to_usize(size));
                         assert_eq!(buf.len(), size);
                         for (i, &b) in buf[16..size].iter().enumerate() {
                             assert_eq!(
